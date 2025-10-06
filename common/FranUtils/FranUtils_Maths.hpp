@@ -97,35 +97,35 @@ namespace FranUtils::Maths
 
 	/**
 	* Fast linear interpolation.
-	* - Fast : No precision checks, no extrapolation prevention.
-	* - Suggested when working on rendering or other performance-critical tasks.
+	* Used for better precision when A and B have opposite signs.
+	* Mainly used for HUD elements.
 	* 
 	* @see FranUtils::Lerp
 	* @param lerpfactor : Factor of Interpolation
-	* @param start : Starting Point
-	* @param end : Ending Point
+	* @param A : Starting Point
+	* @param B : Ending Point
 	* @return Interpolated Value
 	*/
-	inline float FastLerp(float lerpfactor, float start, float end)
+	inline float HUDLerp(float lerpfactor, float A, float B)
 	{
 		// If start and end have opposite signs, ensure precision by distributing frac correctly.
 		// This avoids potential floating-point precision issues when interpolating across zero.
-		if ((start <= 0 && end >= 0) || (start >= 0 && end <= 0))
+		if ((A <= 0 && B >= 0) || (A >= 0 && B <= 0))
 		{
-			return lerpfactor * end + (1 - lerpfactor) * start;
+			return lerpfactor * B + (1 - lerpfactor) * A;
 		}
 
-		// If Lerp Factor is exactly 1, return the end value directly to ensure accuracy.
+		// If Lerp Factor is exactly 1, return the B value directly to ensure accuracy.
 		if (lerpfactor == 1)
-			return end;
+			return B;
 
 		// Compute the standard linear interpolation.
-		const float x = start + lerpfactor * (end - start);
+		const float x = A + lerpfactor * (B - A);
 
-		// If Lerp Factor > 1, prevent overshooting beyond 'end' when extrapolating.
-		// If Lerp Factor < 0, prevent undershooting beyond 'start'.
+		// If Lerp Factor > 1, prevent overshooting beyond 'B' when extrapolating.
+		// If Lerp Factor < 0, prevent undershooting beyond 'A'.
 		// Uses clamping to ensure monotonic behaviour near lerpfactor = 1.
-		return (lerpfactor > 1) == (end > start) ? std::min(end, x) : std::max(end, x);
+		return (lerpfactor > 1) == (B > A) ? std::min(B, x) : std::max(B, x);
 	}
 
 	/**

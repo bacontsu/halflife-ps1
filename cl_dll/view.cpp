@@ -520,8 +520,8 @@ void V_CamAnims(struct ref_params_s* pparams, cl_entity_s* view)
 
 		for (int i = 0; i < 3; i++)
 		{
-			l_camangles[i] = FranUtils::Maths::FastLerp(pparams->frametime * 17.0f, l_camangles [i], result[i] * 1.2);
-			l_campos[i] = FranUtils::Maths::FastLerp(pparams->frametime * 17.0f, l_campos[i], result2[i] * 1.2);
+			l_camangles[i] = FranUtils::Maths::HUDLerp(pparams->frametime * 17.0f, l_camangles[i], result[i] * 1.2);
+			l_campos[i] = FranUtils::Maths::HUDLerp(pparams->frametime * 17.0f, l_campos[i], result2[i] * 1.2);
 
 			pparams->viewangles[i] += l_camangles[i] / 25;
 			// pparams->vieworg[i] += l_campos[i] / 10;

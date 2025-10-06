@@ -4235,9 +4235,9 @@ int CStudioModelRenderer::StudioRecursiveLightPoint(entextrainfo_t* ext, mnode_t
 
 			if (bFoundStoredLight)
 			{
-				StoredLightBuffer[iFoundIndex].color.x = FranUtils::Maths::FastLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color.x, (float)(lightmap->r * flScale) / 255);
-				StoredLightBuffer[iFoundIndex].color.y = FranUtils::Maths::FastLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color.y, (float)(lightmap->g * flScale) / 255);
-				StoredLightBuffer[iFoundIndex].color.z = FranUtils::Maths::FastLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color.z, (float)(lightmap->b * flScale) / 255);
+				StoredLightBuffer[iFoundIndex].color.x = FranUtils::Maths::HUDLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color.x, (float)(lightmap->r * flScale) / 255);
+				StoredLightBuffer[iFoundIndex].color.y = FranUtils::Maths::HUDLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color.y, (float)(lightmap->g * flScale) / 255);
+				StoredLightBuffer[iFoundIndex].color.z = FranUtils::Maths::HUDLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color.z, (float)(lightmap->b * flScale) / 255);
 
 				color.x = StoredLightBuffer[iFoundIndex].color.x;
 				color.y = StoredLightBuffer[iFoundIndex].color.y;
@@ -4268,9 +4268,9 @@ int CStudioModelRenderer::StudioRecursiveLightPoint(entextrainfo_t* ext, mnode_t
 					// gEngfuncs.Con_Printf("FOUND BALLS\n"); // im at the edge of insanity
 
 
-					StoredLightBuffer[iFoundIndex].color2.x = FranUtils::Maths::FastLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color2.x, ((float)lightmap->r / 255) * scale);
-					StoredLightBuffer[iFoundIndex].color2.y = FranUtils::Maths::FastLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color2.y, ((float)lightmap->g / 255) * scale);
-					StoredLightBuffer[iFoundIndex].color2.z = FranUtils::Maths::FastLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color2.z, ((float)lightmap->b / 255) * scale);
+					StoredLightBuffer[iFoundIndex].color2.x = FranUtils::Maths::HUDLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color2.x, ((float)lightmap->r / 255) * scale);
+					StoredLightBuffer[iFoundIndex].color2.y = FranUtils::Maths::HUDLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color2.y, ((float)lightmap->g / 255) * scale);
+					StoredLightBuffer[iFoundIndex].color2.z = FranUtils::Maths::HUDLerp(gHUD.m_flTimeDelta * 2.0f, StoredLightBuffer[iFoundIndex].color2.z, ((float)lightmap->b / 255) * scale);
 
 					color.x += StoredLightBuffer[iFoundIndex].color2.x;
 					color.y += StoredLightBuffer[iFoundIndex].color2.y;
