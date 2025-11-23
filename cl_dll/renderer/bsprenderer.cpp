@@ -3789,8 +3789,8 @@ void CBSPRenderer::ParseDetailTextureFile()
 		}
 
 		std::string detailTexture = values[0];
-		float xscale = std::stof(values[1]);
-		float yscale = std::stof(values[2]);
+		float xscale = std::stof(values[1]) / 2;
+		float yscale = std::stof(values[2]) / 2;
 
 		if (texture.length() > 32 || detailTexture.length() > 32)
 		{
@@ -3853,10 +3853,15 @@ Vector CBSPRenderer::FindIntersectionPoint(const Vector& p1, const Vector& p2, c
 	Vector dir = p2 - p1;
 	float denom = DotProduct(dir, normal);
 
-	if (fabs(denom) < epsilon) // Avoid division by zero by very small epsilon
-		return p1;
+	// Almost parallel
+	if (fabs(denom) < epsilon)
+		return Vector(FLT_MAX, FLT_MAX, FLT_MAX);
 
 	float t = DotProduct(planepoint - p1, normal) / denom;
+
+	if (t < -epsilon || t > 1 + epsilon)
+		return Vector(FLT_MAX, FLT_MAX, FLT_MAX);
+
 	return p1 + dir * t;
 };
 
@@ -3869,13 +3874,24 @@ RemoveDuplicateVertices
 void CBSPRenderer::RemoveDuplicateVertices(std::vector<Vector>& vecOut, float epsilon)
 {
 	std::vector<Vector> cleaned;
+	cleaned.reserve(vecOut.size());
+
 	for (size_t i = 0; i < vecOut.size(); i++)
 	{
-		if (cleaned.empty() || (cleaned.back() - vecOut[i]).Length() > epsilon)
+		bool dup = false;
+		for (size_t j = 0; j < cleaned.size(); j++)
+		{
+			if ((cleaned[j] - vecOut[i]).Length() <= epsilon)
+			{
+				dup = true;
+				break;
+			}
+		}
+		if (!dup)
 			cleaned.push_back(vecOut[i]);
 	}
 
-	if (cleaned.size() >= 3) // It's a poly, ffs. Ofc it needs at least 3 vertices.
+	if (cleaned.size() >= 3)
 		vecOut = std::move(cleaned);
 }
 
@@ -3889,12 +3905,21 @@ void CBSPRenderer::EnsureCounterClockwise(std::vector<Vector>& vecOut, const Vec
 {
 	if (vecOut.size() < 3)
 		return; // Not a polygon wtf
-	Vector computedNormal = CrossProduct(vecOut[1] - vecOut[0], vecOut[2] - vecOut[0]);
 
-	if (DotProduct(computedNormal, normal) < 0)
+	Vector n(0, 0, 0);
+
+	for (size_t i = 0; i < vecOut.size(); i++)
 	{
-		std::reverse(vecOut.begin(), vecOut.end());
+		const Vector& v0 = vecOut[i];
+		const Vector& v1 = vecOut[(i + 1) % vecOut.size()];
+
+		n.x += (v0.y - v1.y) * (v0.z + v1.z);
+		n.y += (v0.z - v1.z) * (v0.x + v1.x);
+		n.z += (v0.x - v1.x) * (v0.y + v1.y);
 	}
+
+	if (DotProduct(n, normal) < 0)
+		std::reverse(vecOut.begin(), vecOut.end());
 }
 
 
@@ -3936,7 +3961,8 @@ int CBSPRenderer::ClipPolygonByPlane(const std::vector<Vector>& vecIn, Vector no
 		if (inside1 != inside2) // Edge crosses the plane
 		{
 			Vector intersection = FindIntersectionPoint(vecIn[i], vecIn[next], normal, planepoint);
-			clippedPolygon.push_back(intersection);
+			if (intersection.x != FLT_MAX)
+				clippedPolygon.push_back(intersection);
 		}
 	}
 
@@ -4058,8 +4084,8 @@ void CBSPRenderer::LoadDecals()
 				}
 
 				std::string texName = FranUtils::StringUtils::LowerCase(tokens[0]);
-				int xsize = std::stoi(tokens[1]);
-				int ysize = std::stoi(tokens[2]);
+				int xsize = std::stoi(tokens[1]) / 2;
+				int ysize = std::stoi(tokens[2]) / 2;
 
 				cl_texture_t* pTexture = LoadDecalTexture(texName);
 				if (!pTexture)
@@ -4510,6 +4536,9 @@ void CBSPRenderer::DecalSurface(msurface_t* surf, DecalTexture& texture, cl_enti
 
 	GetUpRight(pnormal, up, right);
 
+	right = right.Normalize();
+	up = up.Normalize();
+
 	int xsize = texture.xsize;
 	int ysize = texture.ysize;
 
@@ -4524,7 +4553,9 @@ void CBSPRenderer::DecalSurface(msurface_t* surf, DecalTexture& texture, cl_enti
 
 	for (int j = 0; j < p->numverts; j++, v += VERTEXSIZE)
 	{
-		dverts1[j] = v;
+		dverts1[j].x = v[0];
+		dverts1[j].y = v[1];
+		dverts1[j].z = v[2];
 	}
 
 	int nv;
