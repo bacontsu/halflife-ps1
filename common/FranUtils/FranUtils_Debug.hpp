@@ -1,4 +1,4 @@
-// FranticDreamer 2022-2025
+// FranticDreamer 2022-2026
 
 #ifndef FRANUTILS_DEBUG_H
 #define FRANUTILS_DEBUG_H
