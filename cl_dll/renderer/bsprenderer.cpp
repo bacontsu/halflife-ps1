@@ -459,7 +459,7 @@ void CBSPRenderer::VidInit()
 
 	// Clear this
 	m_vSkyOrigin = Vector();
-	m_vSkyOrigin = Vector();
+	m_vSkyWorldOrigin = Vector();
 
 	if (m_bShadowSupport)
 	{
@@ -894,6 +894,8 @@ GetLightStyleValue
 */
 int CBSPRenderer::GetLightStyleValue(int index)
 {
+	if (index < 0 || static_cast<size_t>(index) >= m_vectorLightStyles.size())
+		return 256;
 	return std::get<1>(m_vectorLightStyles[index]);
 }
 
@@ -3803,7 +3805,7 @@ void CBSPRenderer::ParseDetailTextureFile()
 		if (!pTexture)
 			continue;
 
-		m_vectorDetailTextures.push_back(DetailTexture(FranUtils::StringUtils::LowerCase(texture), detailTexture, xscale, yscale, pTexture->iIndex));
+		m_vectorDetailTextures.push_back(DetailTexture(FranUtils::StringUtils::LowerCase(texture), detailTexture, pTexture->iIndex, xscale, yscale));
 		iter++;
 	}
 }
@@ -4274,22 +4276,25 @@ void CBSPRenderer::CreateDecal(Vector endpos, Vector pnormal, const std::string&
 	m_vDecalMaxs[1] = endpos[1] + radius;
 	m_vDecalMaxs[2] = endpos[2] + radius;
 
-	CustomDecal* newDecal = nullptr;
+	// Use an index rather than a raw pointer so that push_back inside AllocDecal
+	// cannot invalidate the pointer via a vector reallocation.
+	size_t newDecalIndex = SIZE_MAX;
+	bool isStatic = persistent;
+
 	if (persistent)
 	{
-		size_t decalIndex = AllocStaticDecal();
-
-		if (decalIndex == SIZE_MAX || decalIndex >= m_vectorStaticDecals.size())
+		newDecalIndex = AllocStaticDecal();
+		if (newDecalIndex == SIZE_MAX || newDecalIndex >= m_vectorStaticDecals.size())
 			return;
-
-		newDecal = &m_vectorStaticDecals[decalIndex];
 	}
 	else
 	{
 		// TODO: Add CVAR to disable removing overlapping decals
-		
-		for (auto& decal : m_vectorDecals)
+
+		for (size_t di = 0; di < m_vectorDecals.size(); di++)
 		{
+			auto& decal = m_vectorDecals[di];
+
 			if (decal.textureBinding.decalGroup != decalTex.group)
 				continue;
 
@@ -4307,25 +4312,24 @@ void CBSPRenderer::CreateDecal(Vector endpos, Vector pnormal, const std::string&
 
 			if (!CullDecalBBox(mins, maxs))
 			{
-				decal = CustomDecal();
-				newDecal = &decal;
+				decal = CustomDecal(); // recycle this slot
+				newDecalIndex = di;
 				break;
 			}
 		}
-		
-		if (newDecal == nullptr)
+
+		if (newDecalIndex == SIZE_MAX)
 		{
-			size_t decalIndex = AllocDecal();
-
-			if (decalIndex == SIZE_MAX || decalIndex >= m_vectorDecals.size())
+			// AllocDecal may push_back and reallocate -- safe because we hold an index, not a pointer
+			newDecalIndex = AllocDecal();
+			if (newDecalIndex == SIZE_MAX || newDecalIndex >= m_vectorDecals.size())
 				return;
-
-			newDecal = &m_vectorDecals[decalIndex];
 		}
 	}
 
-	if (newDecal == nullptr)
-		return;
+	// Resolve index to pointer only after all allocations are done.
+	CustomDecal* newDecal = isStatic ? &m_vectorStaticDecals[newDecalIndex]
+									 : &m_vectorDecals[newDecalIndex];
 
 	newDecal->textureBinding = decalTex;
 	newDecal->position = endpos;
@@ -4575,7 +4579,7 @@ void CBSPRenderer::DecalSurface(msurface_t* surf, DecalTexture& texture, cl_enti
 	if (nv == 0)
 		return;
 
-	pDecal->polys.clear();
+	//pDecal->polys.clear();
 	pDecal->polys.push_back(CustomDecalPoly());
 
 	CustomDecalPoly& poly = pDecal->polys.back();
