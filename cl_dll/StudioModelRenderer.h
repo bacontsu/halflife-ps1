@@ -27,8 +27,22 @@ Transparency code by Neil "Jed" Jedrzejewski
 
 #include "renderer/rendererdefs.h"
 #include "renderer/svd_format.h"
+#include "renderer/glslshader.h"
 
-#define MAX_FRAGMENT_SHADERS 2
+// Uniforms of the studio model shaders
+struct glsl_studio_uniforms_t
+{
+	GLint lightdir;
+	GLint ambientlight;
+	GLint diffuselight;
+	GLint texscale;
+	GLint numlights;
+	GLint radialfog;
+	GLint fogenabled;
+	GLint lightpos;
+	GLint lightcolor;
+	GLint lightfwd;
+};
 
 /*
 ====================
@@ -256,8 +270,17 @@ public:
 	int m_iCurrentBinding;
 	int m_iEngineBinding;
 
-	GLuint m_uiVertexShaders[MAX_MODEL_SHADERS];
-	GLuint m_uiFragmentShaders[MAX_FRAGMENT_SHADERS];
+	CGLSLShader m_studioShader;		// Vertex + Fragment
+	CGLSLShader m_studioShaderNoFS; // Vertex only. Keeps te_models_debug_light untextured
+	CGLSLShader m_studioShaderNoVS; // Fragment only. For fullbright meshes drawn with fixed function vertex processing
+
+	glsl_studio_uniforms_t m_studioUniforms;
+	glsl_studio_uniforms_t m_studioUniformsNoFS;
+	GLint m_studioFogUniformNoVS;
+
+	// Programme selected for the current entity by StudioSetupRenderer
+	CGLSLShader* m_pBoundShader;
+	glsl_studio_uniforms_t* m_pBoundUniforms;
 
 	cvar_t* m_pCvarDrawModels;
 	cvar_t* m_pCvarModelsBBoxDebug;

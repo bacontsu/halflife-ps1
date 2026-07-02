@@ -28,6 +28,7 @@ Extended and/or recoded by Andrew Lucas
 #include "cvardef.h"
 #include "textureloader.h"
 #include "rendererdefs.h"
+#include "glslshader.h"
 
 /*
 ====================
@@ -299,9 +300,9 @@ public:
 	texture_t m_pMultiPassTextureList[MAX_MAP_TEXTURES];
 	int m_iNumTextures;
 
-	GLuint m_iFogFragmentID;
-	GLuint m_iShadowFragmentID;
-	GLuint m_iDecalFragmentID;
+	CGLSLShader m_fogShader;	// Fragment only
+	CGLSLShader m_shadowShader; // Fragment only
+	CGLSLShader m_decalShader;	// Fragment only
 
 	PFNGLCLIENTACTIVETEXTUREARBPROC glClientActiveTextureARB;
 	PFNGLACTIVETEXTUREARBPROC glActiveTextureARB;
@@ -316,13 +317,6 @@ public:
 	PFNGLUNLOCKARRAYSEXTPROC glUnlockArraysEXT;
 
 	PFNGLTEXIMAGE3DEXTPROC glTexImage3DEXT;
-
-	PFNGLGENPROGRAMSARBPROC glGenProgramsARB;
-	PFNGLBINDPROGRAMARBPROC glBindProgramARB;
-	PFNGLPROGRAMSTRINGARBPROC glProgramStringARB;
-	PFNGLGETPROGRAMIVARBPROC glGetProgramivARB;
-
-	PFNGLPROGRAMLOCALPARAMETER4FARBPROC glProgramLocalParameter4fARB;
 
 	PFNGLFOGCOORDPOINTEREXTPROC glFogCoordPointer;
 #ifdef HL25_UPDATE

@@ -81,6 +81,7 @@ HL1_OBJS = \
 	$(HL1_OBJ_DIR)/voice_status.o \
 	$(HL1_OBJ_DIR)/renderer/bsprenderer.o \
 	$(HL1_OBJ_DIR)/renderer/frustum.o \
+	$(HL1_OBJ_DIR)/renderer/glslshader.o \
 	$(HL1_OBJ_DIR)/renderer/mirrormanager.o \
 	$(HL1_OBJ_DIR)/renderer/particle_engine.o \
 	$(HL1_OBJ_DIR)/renderer/propmanager.o  \
