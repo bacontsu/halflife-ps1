@@ -998,9 +998,9 @@ void RenderersDumpInfo()
 	gEngfuncs.Con_Printf("Number of detail textures: %zu.\n", gBSPRenderer.m_vectorDetailTextures.size());
 	gEngfuncs.Con_Printf("Current free texture ID: %i.\n", current_ext_texture_id);
 	if (gBSPRenderer.m_bShaderSupport)
-		gEngfuncs.Con_Printf("ARB shaders supported.\n");
+		gEngfuncs.Con_Printf("GLSL shaders supported.\n");
 	else
-		gEngfuncs.Con_Printf("ARB shaders not supported.\n");
+		gEngfuncs.Con_Printf("GLSL shaders not supported.\n");
 	if (gBSPRenderer.m_bRadialFogSupport)
 		gEngfuncs.Con_Printf("Radial fog supported.\n");
 	else

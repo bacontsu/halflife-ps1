@@ -152,6 +152,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClCompile Include="..\..\cl_dll\mp3.cpp" />
     <ClCompile Include="..\..\cl_dll\renderer\bsprenderer.cpp" />
     <ClCompile Include="..\..\cl_dll\renderer\frustum.cpp" />
+    <ClCompile Include="..\..\cl_dll\renderer\glslshader.cpp" />
     <ClCompile Include="..\..\cl_dll\renderer\mirrormanager.cpp" />
     <ClCompile Include="..\..\cl_dll\renderer\particle_engine.cpp" />
     <ClCompile Include="..\..\cl_dll\renderer\propmanager.cpp" />
@@ -233,6 +234,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClInclude Include="..\..\cl_dll\kbutton.h" />
     <ClInclude Include="..\..\cl_dll\mp3.h" />
     <ClInclude Include="..\..\cl_dll\renderer\bsprenderer.h" />
+    <ClInclude Include="..\..\cl_dll\renderer\glslshader.h" />
     <ClInclude Include="..\..\cl_dll\renderer\frustum.h" />
     <ClInclude Include="..\..\cl_dll\renderer\mirrormanager.h" />
     <ClInclude Include="..\..\cl_dll\renderer\particle_engine.h" />

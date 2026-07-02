@@ -521,8 +521,6 @@ struct cl_dlight_t
 //
 //==================================================
 #define MAX_WATER_ENTITIES 64
-#define MAX_WATER_VERTEX_SHADERS 2
-#define MAX_WATER_FRAGMENT_SHADERS 4
 #define WATER_RESOLUTION 512
 
 //==================================================
@@ -581,7 +579,6 @@ struct cl_mirror_t
 #define MAX_MODEL_LIGHTS 6
 #define MAX_MODEL_DECALS 16
 #define MAX_CACHE_MODELS 2048
-#define MAX_MODEL_SHADERS 14
 
 #define TEXFLAG_NONE 1
 #define TEXFLAG_FULLBRIGHT 1

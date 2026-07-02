@@ -88,72 +88,54 @@ float turbsin[] = {
 	-1.56072, -1.3677, -1.17384, -0.979285, -0.784137, -0.588517, -0.392541, -0.19633};
 
 //===========================================
-//	ARB SHADER
+//	GLSL SHADERS
 //===========================================
+
+// Fog blend pass over the multitexture world geometry.
+// The vertex stage stays fixed function, so gl_FogFragCoord carries either the radial fog coordinate array or the fragment depth.
 char fog_fp[] =
-	"!!ARBfp1.0"
-	"OPTION ARB_precision_hint_fastest;"
-	"TEMP R0;"
-	"ABS R0.x, fragment.fogcoord.x;"
-	"SUB R0.y, state.fog.params.z, R0.x;"
-	"MUL_SAT R0.x, R0.y, state.fog.params.w;"
-	"MOV result.color, state.fog.color;"
-	"SUB result.color.a, 1.0, R0.x;"
-	"END";
+	"#version 120\n"
+	"void main()\n"
+	"{\n"
+	"	float fog = clamp((gl_Fog.end - abs(gl_FogFragCoord)) * gl_Fog.scale, 0.0, 1.0);\n"
+	"	gl_FragColor = vec4(gl_Fog.color.rgb, 1.0 - fog);\n"
+	"}\n";
 
+// Fades fogged decals towards mid-gray.
+// Invisible with the GL_DST_COLOR/GL_SRC_COLOR blend mode used for decals.
 char decal_fp[] =
-	"!!ARBfp1.0"
-	"TEMP R0; TEMP R1;"
-	"TEX R1, fragment.texcoord[0], texture[0], 2D;"
-	"ABS R0.x, fragment.fogcoord.x;"
-	"SUB R0.y, state.fog.params.z, R0.x;"
-	"MUL_SAT R0.w, R0.y, state.fog.params.w;"
-	"MUL R0.xyz, R0.w, R1;"
-	"SUB R1.x, 1.0, R0.w;"
-	"MAD result.color.x, 0.498, R1.x, R0.x;"
-	"MAD result.color.y, 0.498, R1.x, R0.y;"
-	"MAD result.color.z, 0.498, R1.x, R0.z;"
-	"MOV result.color.w, R1.w;"
-	"END";
+	"#version 120\n"
+	"uniform sampler2D texture0;\n"
+	"void main()\n"
+	"{\n"
+	"	vec4 color = texture2D(texture0, gl_TexCoord[0].xy);\n"
+	"	float fog = clamp((gl_Fog.end - abs(gl_FogFragCoord)) * gl_Fog.scale, 0.0, 1.0);\n"
+	"	gl_FragColor = vec4(vec3(0.498) * (1.0 - fog) + color.rgb * fog, color.a);\n"
+	"}\n";
 
+// Projective spotlight with 5-tap PCF shadow mapping.
+// Texture coordinates come from fixed function eye-linear texgen.
 char shadow_fp[] =
-	"!!ARBfp1.0"
-	"OPTION ARB_fragment_program_shadow;"
-	"OPTION ARB_precision_hint_fastest;"
-	"PARAM c[5] = {"
-	"{0, -0.00390625},"
-	"{-0.00390625, 0},"
-	"{0.00390625, 0},"
-	"{0, 0.00390625},"
-	"{5, 1}};"
-	"TEMP R0;"
-	"TEMP R1;"
-	"RCP R0.x, fragment.texcoord[2].w;"
-	"MUL R0.xyz, fragment.texcoord[2], R0.x;"
-	"TEX R0.w, R0, texture[2], SHADOW2D;"
-	"ADD R1.xyz, R0, c[0];"
-	"TEX R1.w, R1, texture[2], SHADOW2D;"
-	"ADD R0.w, R1.w, R0.w;"
-	"ADD R1.xyz, R0, c[1];"
-	"TEX R1.w, R1, texture[2], SHADOW2D;"
-	"ADD R0.w, R1.w, R0.w;"
-	"ADD R1.xyz, R0, c[2];"
-	"TEX R1.w, R1, texture[2], SHADOW2D;"
-	"ADD R0.w, R1.w, R0.w;"
-	"ADD R1.xyz, R0, c[3];"
-	"TEX R1.w, R1, texture[2], SHADOW2D;"
-	"ADD R0.w, R1.w, R0.w;"
-	"RCP R1.w, c[4].x;"
-	"MUL R1.w, R0.w, R1.w;"
-	"TXP R0, fragment.texcoord[0], texture[0], 2D;"
-	"MUL R1, R0, R1.w;"
-	"TXP R0, fragment.texcoord[1], texture[1], 1D;"
-	"MUL R1, R1, R0;"
-	"MUL result.color.xyz, fragment.color.primary, R1;"
-	"MOV result.color.w, c[4].y;"
-	"END";
+	"#version 120\n"
+	"uniform sampler2D spotlighttex;\n"
+	"uniform sampler1D attenuationtex;\n"
+	"uniform sampler2DShadow shadowmap;\n"
+	"void main()\n"
+	"{\n"
+	"	vec3 coord = gl_TexCoord[2].xyz / gl_TexCoord[2].w;\n"
+	"	float shadow = shadow2D(shadowmap, coord).r;\n"
+	"	shadow += shadow2D(shadowmap, coord + vec3(0.0, -0.00390625, 0.0)).r;\n"
+	"	shadow += shadow2D(shadowmap, coord + vec3(-0.00390625, 0.0, 0.0)).r;\n"
+	"	shadow += shadow2D(shadowmap, coord + vec3(0.00390625, 0.0, 0.0)).r;\n"
+	"	shadow += shadow2D(shadowmap, coord + vec3(0.0, 0.00390625, 0.0)).r;\n"
+	"	shadow *= 0.2;\n"
+	"	vec4 color = texture2DProj(spotlighttex, gl_TexCoord[0]) * shadow;\n"
+	"	color *= texture1DProj(attenuationtex, gl_TexCoord[1]);\n"
+	"	gl_FragColor = vec4(gl_Color.rgb * color.rgb, 1.0);\n"
+	"}\n";
+
 //===========================================
-//	ARB SHADER
+//	GLSL SHADERS
 //===========================================
 
 /*
@@ -217,7 +199,7 @@ void CBSPRenderer::Init()
 		m_bRadialFogSupport = true;
 	}
 
-	if (ExtensionSupported("ARB_fragment_program") && ExtensionSupported("ARB_vertex_program"))
+	if (ExtensionSupported("GL_ARB_shader_objects") && ExtensionSupported("GL_ARB_vertex_shader") && ExtensionSupported("GL_ARB_fragment_shader") && ExtensionSupported("GL_ARB_shading_language_100") && CGLSLShader::LoadFunctions())
 	{
 		// Shaders are supported
 		m_bShaderSupport = true;
@@ -259,12 +241,6 @@ void CBSPRenderer::Init()
 
 	glTexImage3DEXT = (PFNGLTEXIMAGE3DEXTPROC)wglGetProcAddress("glTexImage3DEXT");
 
-	glGenProgramsARB = (PFNGLGENPROGRAMSARBPROC)wglGetProcAddress("glGenProgramsARB");
-	glBindProgramARB = (PFNGLBINDPROGRAMARBPROC)wglGetProcAddress("glBindProgramARB");
-	glProgramStringARB = (PFNGLPROGRAMSTRINGARBPROC)wglGetProcAddress("glProgramStringARB");
-	glGetProgramivARB = (PFNGLGETPROGRAMIVARBPROC)wglGetProcAddress("glGetProgramivARB");
-
-	glProgramLocalParameter4fARB = (PFNGLPROGRAMLOCALPARAMETER4FARBPROC)wglGetProcAddress("glProgramLocalParameter4fARB");
 	glFogCoordPointer = (PFNGLFOGCOORDPOINTEREXTPROC)wglGetProcAddress("glFogCoordPointer");
 
 #ifdef HL25_UPDATE
@@ -367,55 +343,39 @@ void CBSPRenderer::Init()
 	if (!m_bShaderSupport)
 		return;
 
-	GLint iErrorPos, iIsNative;
-	glEnable(GL_FRAGMENT_PROGRAM_ARB);
-	glGenProgramsARB(1, &m_iFogFragmentID);
-	glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_iFogFragmentID);
-
-	glProgramStringARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, sizeof(fog_fp) - 1, fog_fp);
-	glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &iErrorPos);
-	glGetProgramivARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB, &iIsNative);
-
-	if (iErrorPos != -1 || (iIsNative == 0))
+	if (!m_fogShader.CreateProgram("fog", nullptr, fog_fp))
 	{
 		m_bShaderSupport = false;
 		m_bDontPromptShadersError = false;
 		return;
 	}
 
-	glEnable(GL_FRAGMENT_PROGRAM_ARB);
-	glGenProgramsARB(1, &m_iDecalFragmentID);
-	glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_iDecalFragmentID);
-
-	glProgramStringARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, sizeof(decal_fp) - 1, decal_fp);
-	glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &iErrorPos);
-	glGetProgramivARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB, &iIsNative);
-	glDisable(GL_FRAGMENT_PROGRAM_ARB);
-
-	if (iErrorPos != -1 || (iIsNative == 0))
+	if (!m_decalShader.CreateProgram("decal", nullptr, decal_fp))
 	{
 		m_bShaderSupport = false;
 		m_bDontPromptShadersError = false;
 		return;
 	}
+
+	m_decalShader.Bind();
+	m_decalShader.SetUniform1i(m_decalShader.GetUniform("texture0"), 0);
+	CGLSLShader::Unbind();
 
 	if (!m_bShadowPCFSupport)
 		return;
 
-	glEnable(GL_FRAGMENT_PROGRAM_ARB);
-	glGenProgramsARB(1, &m_iShadowFragmentID);
-	glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_iShadowFragmentID);
-
-	glProgramStringARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, sizeof(shadow_fp) - 1, shadow_fp);
-	glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &iErrorPos);
-	glGetProgramivARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB, &iIsNative);
-	glDisable(GL_FRAGMENT_PROGRAM_ARB);
-
-	if (iErrorPos != -1 || (iIsNative == 0))
+	if (!m_shadowShader.CreateProgram("shadow", nullptr, shadow_fp))
 	{
 		m_bShaderSupport = false;
 		m_bDontPromptShadersError = false;
+		return;
 	}
+
+	m_shadowShader.Bind();
+	m_shadowShader.SetUniform1i(m_shadowShader.GetUniform("spotlighttex"), 0);
+	m_shadowShader.SetUniform1i(m_shadowShader.GetUniform("attenuationtex"), 1);
+	m_shadowShader.SetUniform1i(m_shadowShader.GetUniform("shadowmap"), 2);
+	CGLSLShader::Unbind();
 
 	// Mark as contents_solid
 	m_dummyNode.contents = CONTENTS_SOLID;
@@ -443,7 +403,7 @@ void CBSPRenderer::VidInit()
 	}
 
 	if (!m_bDontPromptShaders)
-		gEngfuncs.Con_Printf("ERROR! Your hardware doesn't support assembly shaders! Advanced effects will be disabled.\n");
+		gEngfuncs.Con_Printf("ERROR! Your hardware doesn't support GLSL shaders! Advanced effects will be disabled.\n");
 
 	if (!m_bDontPromptShadersError)
 		gEngfuncs.Con_Printf("ERROR! There was an error with the shaders! Advanced effects will remain disabled.\n");
@@ -2629,8 +2589,7 @@ void CBSPRenderer::RenderFinalPasses(bool bSecond)
 
 	if (gHUD.m_pFogSettings.active)
 	{
-		glEnable(GL_FRAGMENT_PROGRAM_ARB);
-		glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_iFogFragmentID);
+		m_fogShader.Bind();
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 		for (int i = 0; i < m_iNumTextures; i++)
@@ -2644,7 +2603,7 @@ void CBSPRenderer::RenderFinalPasses(bool bSecond)
 			}
 		}
 
-		glDisable(GL_FRAGMENT_PROGRAM_ARB);
+		CGLSLShader::Unbind();
 	}
 
 	SetTexEnvs(ENVSTATE_OFF, ENVSTATE_OFF, ENVSTATE_OFF, ENVSTATE_OFF);
@@ -4755,8 +4714,7 @@ void CBSPRenderer::DrawDecals()
 	if (gHUD.m_pFogSettings.active && (m_pCvarWorldShaders->value != 0.0f) && m_bShaderSupport)
 	{
 		glDisable(GL_FOG);
-		glEnable(GL_FRAGMENT_PROGRAM_ARB);
-		glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_iDecalFragmentID);
+		m_decalShader.Bind();
 	}
 	else if (gHUD.m_pFogSettings.active)
 	{
@@ -4779,7 +4737,7 @@ void CBSPRenderer::DrawDecals()
 
 	if (gHUD.m_pFogSettings.active && (m_pCvarWorldShaders->value != 0.0f) && m_bShaderSupport)
 	{
-		glDisable(GL_FRAGMENT_PROGRAM_ARB);
+		CGLSLShader::Unbind();
 		glEnable(GL_FOG);
 	}
 	else if (gHUD.m_pFogSettings.active)
@@ -5059,8 +5017,7 @@ void CBSPRenderer::SetupSpotLight()
 
 		if (m_pCvarPCFShadows->value >= 1 && m_bShadowPCFSupport)
 		{
-			glEnable(GL_FRAGMENT_PROGRAM_ARB);
-			glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_iShadowFragmentID);
+			m_shadowShader.Bind();
 		}
 	}
 }
@@ -5092,7 +5049,7 @@ void CBSPRenderer::FinishSpotLight()
 	if (m_bLightShadow)
 	{
 		if (m_pCvarPCFShadows->value >= 1 && m_bShadowPCFSupport)
-			glDisable(GL_FRAGMENT_PROGRAM_ARB);
+			CGLSLShader::Unbind();
 
 		glActiveTextureARB(GL_TEXTURE2_ARB);
 		glMatrixMode(GL_TEXTURE);

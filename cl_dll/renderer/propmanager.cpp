@@ -339,7 +339,7 @@ void CPropManager::ParseEntities()
 				pTemp++;
 			}
 
-			pEPair->key = std::string(pCurText);
+			pEPair->key = std::string(pCurText, iLength);
 			pCurText += iLength + 1;
 
 			// skip to next token
@@ -379,7 +379,7 @@ void CPropManager::ParseEntities()
 				pTemp++;
 			}
 
-			pEPair->value = std::string(pCurText);
+			pEPair->value = std::string(pCurText, iLength);
 			pCurText += iLength + 1;
 		}
 	}

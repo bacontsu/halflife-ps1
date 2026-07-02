@@ -50,275 +50,91 @@ extern CGameStudioModelRenderer g_StudioRenderer;
 extern float sgn(float a);
 
 //===========================================
-//	ARB SHADERS
+//	GLSL SHADERS
 //===========================================
-char water_vp_depth[] =
-	"!!ARBvp1.0"
-	"TEMP R0;"
-	"TEMP R1;"
-	"DP4 R0.x, vertex.position, program.local[0];"
-	"DP4 R0.y, vertex.position, program.local[1];"
-	"DP4 R0.z, vertex.position, program.local[2];"
-	"DP4 R0.w, vertex.position, program.local[3];"
 
-	"DP4 R1.x, R0, program.local[4];"
-	"DP4 R1.y, R0, program.local[5];"
-	"DP4 R1.z, R0, program.local[6];"
-	"DP4 R1.w, R0, program.local[7];"
+char water_vertex_shader[] =
+	"#version 120\n"
+	"uniform int v_radialfog;\n"
+	"void main()\n"
+	"{\n"
+	"	vec4 eyepos = gl_ModelViewMatrix * gl_Vertex;\n"
+	"	gl_Position = gl_ProjectionMatrix * eyepos;\n"
+	"	gl_TexCoord[0] = vec4(gl_MultiTexCoord0.xy * 0.0078125, 0.0, 1.0);\n"
+	"	gl_TexCoord[1] = gl_Position;\n"
+	"	gl_TexCoord[2] = vec4(gl_Vertex.xyz, 1.0);\n"
+	"	gl_FogFragCoord = (v_radialfog != 0) ? length(eyepos.xyz) : gl_Position.z;\n"
+	"}\n";
 
-	"MUL result.texcoord[0].xy, vertex.texcoord, 0.0078125;"
-	"MOV result.texcoord[1], R1;"
-	"MOV result.texcoord[2].xyz, vertex.position;"
+// Above water shader.
+// Distorted reflection and refraction blended with a fresnel term, tinted towards the water colour.
+char water_fragment_above[] =
+	"#version 120\n"
+	"uniform sampler2D normalmap;\n"
+	"uniform sampler2D refractmap;\n"
+	"uniform sampler2D reflectmap;\n"
+	"uniform vec3 v_vieworigin;\n"
+	"uniform vec3 v_watercolor;\n"
+	"uniform float v_fresnel;\n"
+	"uniform float v_time;\n"
+	"uniform int v_fogenabled;\n"
+	"void main()\n"
+	"{\n"
+	"	vec2 uv = gl_TexCoord[0].xy;\n"
+	"	vec3 nsum = texture2D(normalmap, uv + vec2(-0.13, 0.11) * v_time).rgb;\n"
+	"	nsum += texture2D(normalmap, uv + vec2(0.2, 0.15) * v_time).rgb;\n"
+	"	nsum += texture2D(normalmap, uv + vec2(0.17, 0.15) * v_time).rgb;\n"
+	"	nsum += texture2D(normalmap, uv + vec2(-0.14, -0.16) * v_time).rgb;\n"
+	"	vec3 normal = normalize(nsum * 0.5 - 1.0);\n"
+	"	vec2 distort = normal.xy * 0.23;\n"
+	"	vec2 ndc = gl_TexCoord[1].xy / gl_TexCoord[1].w;\n"
+	"	vec4 refraction = texture2D(refractmap, ndc * 0.5 + distort + 0.5);\n"
+	"	vec4 reflection = texture2D(reflectmap, vec2(ndc.x, -ndc.y) * 0.5 + distort + 0.5);\n"
+	"	vec3 viewdir = v_vieworigin - gl_TexCoord[2].xyz;\n"
+	"	float fresnel = clamp(min(viewdir.z / length(viewdir) * v_fresnel * 1.3, 0.97), 0.0, 1.0);\n"
+	"	vec4 color = mix(reflection, refraction, fresnel);\n"
+	"	float luminance = color.r + color.g + color.b;\n"
+	"	color = mix(color, vec4(v_watercolor * luminance / 3.0, 0.17), 0.2);\n"
+	"	if (v_fogenabled != 0)\n"
+	"	{\n"
+	"		float fog = clamp((gl_Fog.end - abs(gl_FogFragCoord)) * gl_Fog.scale, 0.0, 1.0);\n"
+	"		color.rgb = mix(gl_Fog.color.rgb, color.rgb, fog);\n"
+	"	}\n"
+	"	gl_FragColor = color;\n"
+	"}\n";
 
-	"MOV result.position, R1;"
-	"MOV result.fogcoord.x, R1.z;"
-	"END";
+// Underwater shader.
+// Distorted refraction faded towards the water colour.
+char water_fragment_under[] =
+	"#version 120\n"
+	"uniform sampler2D normalmap;\n"
+	"uniform sampler2D refractmap;\n"
+	"uniform vec3 v_watercolor;\n"
+	"uniform float v_time;\n"
+	"uniform int v_fogenabled;\n"
+	"void main()\n"
+	"{\n"
+	"	vec2 uv = gl_TexCoord[0].xy;\n"
+	"	vec3 nsum = texture2D(normalmap, uv + vec2(-0.13, 0.11) * v_time).rgb;\n"
+	"	nsum += texture2D(normalmap, uv + vec2(0.2, 0.15) * v_time).rgb;\n"
+	"	nsum += texture2D(normalmap, uv + vec2(0.17, 0.15) * v_time).rgb;\n"
+	"	nsum += texture2D(normalmap, uv + vec2(-0.14, -0.16) * v_time).rgb;\n"
+	"	vec3 normal = normalize(nsum * 0.5 - 1.0);\n"
+	"	vec2 distort = normal.xy * 0.3;\n"
+	"	vec2 ndc = gl_TexCoord[1].xy / gl_TexCoord[1].w;\n"
+	"	vec4 refraction = texture2D(refractmap, ndc * 0.5 + distort + 0.5);\n"
+	"	float luminance = refraction.r + refraction.g + refraction.b;\n"
+	"	vec4 color = mix(refraction, vec4(v_watercolor, 1.0), luminance * 0.06666667);\n"
+	"	if (v_fogenabled != 0)\n"
+	"	{\n"
+	"		float fog = clamp((gl_Fog.end - abs(gl_FogFragCoord)) * gl_Fog.scale, 0.0, 1.0);\n"
+	"		color.rgb = mix(gl_Fog.color.rgb, color.rgb, fog);\n"
+	"	}\n"
+	"	gl_FragColor = color;\n"
+	"}\n";
 
-char water_vp_radial[] =
-	"!!ARBvp1.0"
-	"TEMP R0;"
-	"TEMP R1;"
-	"DP4 R0.x, vertex.position, program.local[0];"
-	"DP4 R0.y, vertex.position, program.local[1];"
-	"DP4 R0.z, vertex.position, program.local[2];"
-	"DP4 R0.w, vertex.position, program.local[3];"
-
-	"DP3 R1.x, R0, R0;"
-	"RSQ R1.x, R1.x;"
-	"RCP result.fogcoord.x, R1.x;"
-
-	"DP4 R1.x, R0, program.local[4];"
-	"DP4 R1.y, R0, program.local[5];"
-	"DP4 R1.z, R0, program.local[6];"
-	"DP4 R1.w, R0, program.local[7];"
-
-	"MUL result.texcoord[0].xy, vertex.texcoord, 0.0078125;"
-	"MOV result.texcoord[1], R1;"
-	"MOV result.texcoord[2].xyz, vertex.position;"
-	"MOV result.position, R1;"
-	"END";
-
-char water_fp_aw_reg[] =
-	"!!ARBfp1.0"
-	"OPTION ARB_precision_hint_fastest;"
-	"PARAM c[8] = { program.local[0..3],"
-	"{ 1.3, 0.97000003, 0.5, 0 },"
-	"{ 0.2, 0.15000001, 0.13, 0.11 },"
-	"{ 0.17, 0.14, 0.16, 1 },"
-	"{ 0.23, 0.33333334 } };"
-	"TEMP R0;"
-	"TEMP R1;"
-	"TEMP R2;"
-	"MOV R1, c[5];"
-	"MAD R0.zw, R1.xyxy, c[3].x, fragment.texcoord[0].xyxy;"
-	"MAD R0.y, R1.w, c[3].x, fragment.texcoord[0];"
-	"MAD R0.x, R1.z, -c[3], fragment.texcoord[0];"
-	"TEX R1.xyz, R0, texture[0], 2D;"
-	"TEX R0.xyz, R0.zwzw, texture[0], 2D;"
-	"ADD R2.xyz, R0, R1;"
-	"MOV R0.xyz, c[6];"
-	"MAD R1.xy, R0.yzzw, -c[3].x, fragment.texcoord[0];"
-	"MAD R0.z, R0.x, c[3].x, fragment.texcoord[0].x;"
-	"TEX R0.xyz, R0.zwzw, texture[0], 2D;"
-	"ADD R0.xyz, R2, R0;"
-	"TEX R1.xyz, R1, texture[0], 2D;"
-	"ADD R0.xyz, R0, R1;"
-	"ADD R1.xyz, -fragment.texcoord[2], c[0];"
-	"DP3 R1.w, R1, R1;"
-	"RSQ R1.w, R1.w;"
-	"MUL R0.xyz, R0, c[4].z;"
-	"ADD R0.xyz, R0, -c[6].w;"
-	"DP3 R0.z, R0, R0;"
-	"RSQ R0.z, R0.z;"
-	"MUL R0.xy, R0.z, R0;"
-	"MUL R2.xy, R0, c[7].x;"
-	"RCP R2.z, fragment.texcoord[1].w;"
-	"MUL R0.xy, R2.z, fragment.texcoord[1];"
-	"MAD R0.xy, R0, c[4].z, R2;"
-	"ADD R0.xy, R0, c[4].z;"
-	"MUL R1.z, R1.w, R1;"
-	"TEX R0, R0, texture[1], 2D;"
-	"MOV R1.y, -fragment.texcoord[1];"
-	"MOV R1.x, fragment.texcoord[1];"
-	"MUL R1.xy, R2.z, R1;"
-	"MAD R1.xy, R1, c[4].z, R2;"
-	"MUL R2.x, R1.z, c[2];"
-	"ADD R1.xy, R1, c[4].z;"
-	"TEX R1, R1, texture[2], 2D;"
-	"MUL R2.x, R2, c[4];"
-	"ADD R0, R0, -R1;"
-	"MIN_SAT R2.x, R2, c[4].y;"
-	"MAD R1, R2.x, R0, R1;"
-	"ADD R0.x, R1, R1.y;"
-	"ADD R0.x, R0, R1.z;"
-	"MUL R0.xyz, R0.x, c[1];"
-	"MOV R0.w, c[6];"
-	"MUL R0.xyz, R0, c[7].y;"
-	"ADD R0, R0, -R1;"
-	"MAD result.color, R0, c[5].x, R1;"
-	"END";
-
-char water_fp_aw_fog[] =
-	"!!ARBfp1.0"
-	"OPTION ARB_precision_hint_fastest;"
-	"OPTION ARB_fog_linear;"
-	"PARAM c[8] = { program.local[0..3],"
-	"{ 1.3, 0.97000003, 0.5, 0 },"
-	"{ 0.2, 0.15000001, 0.13, 0.11 },"
-	"{ 0.17, 0.14, 0.16, 1 },"
-	"{ 0.23, 0.33333334 } };"
-	"TEMP R0;"
-	"TEMP R1;"
-	"TEMP R2;"
-	"MOV R1, c[5];"
-	"MAD R0.zw, R1.xyxy, c[3].x, fragment.texcoord[0].xyxy;"
-	"MAD R0.y, R1.w, c[3].x, fragment.texcoord[0];"
-	"MAD R0.x, R1.z, -c[3], fragment.texcoord[0];"
-	"TEX R1.xyz, R0, texture[0], 2D;"
-	"TEX R0.xyz, R0.zwzw, texture[0], 2D;"
-	"ADD R2.xyz, R0, R1;"
-	"MOV R0.xyz, c[6];"
-	"MAD R1.xy, R0.yzzw, -c[3].x, fragment.texcoord[0];"
-	"MAD R0.z, R0.x, c[3].x, fragment.texcoord[0].x;"
-	"TEX R0.xyz, R0.zwzw, texture[0], 2D;"
-	"ADD R0.xyz, R2, R0;"
-	"TEX R1.xyz, R1, texture[0], 2D;"
-	"ADD R0.xyz, R0, R1;"
-	"ADD R1.xyz, -fragment.texcoord[2], c[0];"
-	"DP3 R1.w, R1, R1;"
-	"RSQ R1.w, R1.w;"
-	"MUL R0.xyz, R0, c[4].z;"
-	"ADD R0.xyz, R0, -c[6].w;"
-	"DP3 R0.z, R0, R0;"
-	"RSQ R0.z, R0.z;"
-	"MUL R0.xy, R0.z, R0;"
-	"MUL R2.xy, R0, c[7].x;"
-	"RCP R2.z, fragment.texcoord[1].w;"
-	"MUL R0.xy, R2.z, fragment.texcoord[1];"
-	"MAD R0.xy, R0, c[4].z, R2;"
-	"ADD R0.xy, R0, c[4].z;"
-	"MUL R1.z, R1.w, R1;"
-	"TEX R0, R0, texture[1], 2D;"
-	"MOV R1.y, -fragment.texcoord[1];"
-	"MOV R1.x, fragment.texcoord[1];"
-	"MUL R1.xy, R2.z, R1;"
-	"MAD R1.xy, R1, c[4].z, R2;"
-	"MUL R2.x, R1.z, c[2];"
-	"ADD R1.xy, R1, c[4].z;"
-	"TEX R1, R1, texture[2], 2D;"
-	"MUL R2.x, R2, c[4];"
-	"ADD R0, R0, -R1;"
-	"MIN_SAT R2.x, R2, c[4].y;"
-	"MAD R1, R2.x, R0, R1;"
-	"ADD R0.x, R1, R1.y;"
-	"ADD R0.x, R0, R1.z;"
-	"MUL R0.xyz, R0.x, c[1];"
-	"MOV R0.w, c[6];"
-	"MUL R0.xyz, R0, c[7].y;"
-	"ADD R0, R0, -R1;"
-	"MAD result.color, R0, c[5].x, R1;"
-	"END";
-
-char water_fp_uw_reg[] =
-	"!!ARBfp1.0"
-	"OPTION ARB_precision_hint_fastest;"
-	"PARAM c[6] = { program.local[0..1],"
-	"{ 0.5, 0, 0.2, 0.15000001 },"
-	"{ 0.13, 0.11, 0.17, 0.14 },"
-	"{ 0.16, 1, 0.30000001 },"
-	"{ 0.06666667, 0 } };"
-	"TEMP R0;"
-	"TEMP R1;"
-	"TEMP R2;"
-	"MOV R1, c[3];"
-	"MAD R2.xw, R1.yyzz, c[1].x, fragment.texcoord[0].yyzx;"
-	"MOV R0.zw, c[2];"
-	"MAD R0.zw, R0, c[1].x, fragment.texcoord[0].xyxy;"
-	"MAD R0.x, R1, -c[1], fragment.texcoord[0];"
-	"MOV R0.y, R2.x;"
-	"TEX R1.xyz, R0, texture[0], 2D;"
-	"TEX R0.xyz, R0.zwzw, texture[0], 2D;"
-	"ADD R2.xyz, R0, R1;"
-	"MOV R0.y, R0.w;"
-	"MOV R0.w, c[4].x;"
-	"MAD R1.x, R1.w, -c[1], fragment.texcoord[0];"
-	"MAD R1.y, R0.w, -c[1].x, fragment.texcoord[0];"
-	"MOV R0.x, R2.w;"
-	"TEX R0.xyz, R0, texture[0], 2D;"
-	"TEX R1.xyz, R1, texture[0], 2D;"
-	"ADD R0.xyz, R2, R0;"
-	"ADD R0.xyz, R0, R1;"
-	"MUL R0.xyz, R0, c[2].x;"
-	"ADD R0.xyz, R0, -c[4].y;"
-	"DP3 R0.z, R0, R0;"
-	"RSQ R0.z, R0.z;"
-	"MUL R0.zw, R0.z, R0.xyxy;"
-	"RCP R0.x, fragment.texcoord[1].w;"
-	"MUL R0.zw, R0, c[4].z;"
-	"MUL R0.xy, R0.x, fragment.texcoord[1];"
-	"MAD R0.xy, R0, c[2].x, R0.zwzw;"
-	"ADD R0.xy, R0, c[2].x;"
-	"TEX R0, R0, texture[1], 2D;"
-	"ADD R2.x, R0, R0.y;"
-	"MOV R1.w, c[4].y;"
-	"MOV R1.xyz, c[0];"
-	"ADD R1, -R0, R1;"
-	"ADD R2.x, R2, R0.z;"
-	"MUL R1, R2.x, R1;"
-	"MAD result.color, R1, c[5].x, R0;"
-	"END";
-
-char water_fp_uw_fog[] =
-	"!!ARBfp1.0"
-	"OPTION ARB_precision_hint_fastest;"
-	"OPTION ARB_fog_linear;"
-	"PARAM c[6] = { program.local[0..1],"
-	"{ 0.5, 0, 0.2, 0.15000001 },"
-	"{ 0.13, 0.11, 0.17, 0.14 },"
-	"{ 0.16, 1, 0.30000001 },"
-	"{ 0.06666667, 0 } };"
-	"TEMP R0;"
-	"TEMP R1;"
-	"TEMP R2;"
-	"MOV R1, c[3];"
-	"MAD R2.xw, R1.yyzz, c[1].x, fragment.texcoord[0].yyzx;"
-	"MOV R0.zw, c[2];"
-	"MAD R0.zw, R0, c[1].x, fragment.texcoord[0].xyxy;"
-	"MAD R0.x, R1, -c[1], fragment.texcoord[0];"
-	"MOV R0.y, R2.x;"
-	"TEX R1.xyz, R0, texture[0], 2D;"
-	"TEX R0.xyz, R0.zwzw, texture[0], 2D;"
-	"ADD R2.xyz, R0, R1;"
-	"MOV R0.y, R0.w;"
-	"MOV R0.w, c[4].x;"
-	"MAD R1.x, R1.w, -c[1], fragment.texcoord[0];"
-	"MAD R1.y, R0.w, -c[1].x, fragment.texcoord[0];"
-	"MOV R0.x, R2.w;"
-	"TEX R0.xyz, R0, texture[0], 2D;"
-	"TEX R1.xyz, R1, texture[0], 2D;"
-	"ADD R0.xyz, R2, R0;"
-	"ADD R0.xyz, R0, R1;"
-	"MUL R0.xyz, R0, c[2].x;"
-	"ADD R0.xyz, R0, -c[4].y;"
-	"DP3 R0.z, R0, R0;"
-	"RSQ R0.z, R0.z;"
-	"MUL R0.zw, R0.z, R0.xyxy;"
-	"RCP R0.x, fragment.texcoord[1].w;"
-	"MUL R0.zw, R0, c[4].z;"
-	"MUL R0.xy, R0.x, fragment.texcoord[1];"
-	"MAD R0.xy, R0, c[2].x, R0.zwzw;"
-	"ADD R0.xy, R0, c[2].x;"
-	"TEX R0, R0, texture[1], 2D;"
-	"ADD R2.x, R0, R0.y;"
-	"MOV R1.w, c[4].y;"
-	"MOV R1.xyz, c[0];"
-	"ADD R1, -R0, R1;"
-	"ADD R2.x, R2, R0.z;"
-	"MUL R1, R2.x, R1;"
-	"MAD result.color, R1, c[5].x, R0;"
-	"END";
 //===========================================
-//	ARB SHADERS
+//	GLSL SHADERS
 //===========================================
 
 /*
@@ -336,102 +152,38 @@ void CWaterShader::Init()
 	if (!gBSPRenderer.m_bShaderSupport)
 		return;
 
-	GLint iErrorPos, iIsNative;
-	glEnable(GL_VERTEX_PROGRAM_ARB);
-	gBSPRenderer.glGenProgramsARB(1, &m_uiVertexPrograms[0]); // Depth fog calculations
-	gBSPRenderer.glBindProgramARB(GL_VERTEX_PROGRAM_ARB, m_uiVertexPrograms[0]);
-
-	gBSPRenderer.glProgramStringARB(GL_VERTEX_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, sizeof(water_vp_depth) - 1, water_vp_depth);
-	glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &iErrorPos);
-	gBSPRenderer.glGetProgramivARB(GL_VERTEX_PROGRAM_ARB, GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB, &iIsNative);
-	glDisable(GL_VERTEX_PROGRAM_ARB);
-
-	if (iErrorPos != -1 || (iIsNative == 0))
+	if (!m_waterShaderAbove.CreateProgram("water above", water_vertex_shader, water_fragment_above) ||
+		!m_waterShaderUnder.CreateProgram("water under", water_vertex_shader, water_fragment_under))
 	{
 		gBSPRenderer.m_bShaderSupport = false;
 		gBSPRenderer.m_bDontPromptShadersError = false;
 		return;
 	}
 
-	glEnable(GL_VERTEX_PROGRAM_ARB);
-	gBSPRenderer.glGenProgramsARB(1, &m_uiVertexPrograms[1]); // Depth fog calculations
-	gBSPRenderer.glBindProgramARB(GL_VERTEX_PROGRAM_ARB, m_uiVertexPrograms[1]);
+	m_waterUniformsAbove.radialfog = m_waterShaderAbove.GetUniform("v_radialfog");
+	m_waterUniformsAbove.fogenabled = m_waterShaderAbove.GetUniform("v_fogenabled");
+	m_waterUniformsAbove.vieworigin = m_waterShaderAbove.GetUniform("v_vieworigin");
+	m_waterUniformsAbove.watercolor = m_waterShaderAbove.GetUniform("v_watercolor");
+	m_waterUniformsAbove.fresnel = m_waterShaderAbove.GetUniform("v_fresnel");
+	m_waterUniformsAbove.time = m_waterShaderAbove.GetUniform("v_time");
 
-	gBSPRenderer.glProgramStringARB(GL_VERTEX_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, sizeof(water_vp_radial) - 1, water_vp_radial);
-	glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &iErrorPos);
-	gBSPRenderer.glGetProgramivARB(GL_VERTEX_PROGRAM_ARB, GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB, &iIsNative);
-	glDisable(GL_VERTEX_PROGRAM_ARB);
+	m_waterUniformsUnder.radialfog = m_waterShaderUnder.GetUniform("v_radialfog");
+	m_waterUniformsUnder.fogenabled = m_waterShaderUnder.GetUniform("v_fogenabled");
+	m_waterUniformsUnder.vieworigin = -1;
+	m_waterUniformsUnder.watercolor = m_waterShaderUnder.GetUniform("v_watercolor");
+	m_waterUniformsUnder.fresnel = -1;
+	m_waterUniformsUnder.time = m_waterShaderUnder.GetUniform("v_time");
 
-	if (iErrorPos != -1 || (iIsNative == 0))
-	{
-		gBSPRenderer.m_bShaderSupport = false;
-		gBSPRenderer.m_bDontPromptShadersError = false;
-		return;
-	}
+	m_waterShaderAbove.Bind();
+	m_waterShaderAbove.SetUniform1i(m_waterShaderAbove.GetUniform("normalmap"), 0);
+	m_waterShaderAbove.SetUniform1i(m_waterShaderAbove.GetUniform("refractmap"), 1);
+	m_waterShaderAbove.SetUniform1i(m_waterShaderAbove.GetUniform("reflectmap"), 2);
 
-	glEnable(GL_FRAGMENT_PROGRAM_ARB);
-	gBSPRenderer.glGenProgramsARB(1, &m_uiFragmentPrograms[0]);
-	gBSPRenderer.glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_uiFragmentPrograms[0]);
+	m_waterShaderUnder.Bind();
+	m_waterShaderUnder.SetUniform1i(m_waterShaderUnder.GetUniform("normalmap"), 0);
+	m_waterShaderUnder.SetUniform1i(m_waterShaderUnder.GetUniform("refractmap"), 1);
 
-	gBSPRenderer.glProgramStringARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, sizeof(water_fp_aw_reg) - 1, water_fp_aw_reg);
-	glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &iErrorPos);
-	gBSPRenderer.glGetProgramivARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB, &iIsNative);
-	glDisable(GL_FRAGMENT_PROGRAM_ARB);
-
-	if (iErrorPos != -1 || (iIsNative == 0))
-	{
-		gBSPRenderer.m_bShaderSupport = false;
-		gBSPRenderer.m_bDontPromptShadersError = false;
-		return;
-	}
-
-	glEnable(GL_FRAGMENT_PROGRAM_ARB);
-	gBSPRenderer.glGenProgramsARB(1, &m_uiFragmentPrograms[1]);
-	gBSPRenderer.glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_uiFragmentPrograms[1]);
-
-	gBSPRenderer.glProgramStringARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, sizeof(water_fp_aw_fog) - 1, water_fp_aw_fog);
-	glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &iErrorPos);
-	gBSPRenderer.glGetProgramivARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB, &iIsNative);
-	glDisable(GL_FRAGMENT_PROGRAM_ARB);
-
-	if (iErrorPos != -1 || (iIsNative == 0))
-	{
-		gBSPRenderer.m_bShaderSupport = false;
-		gBSPRenderer.m_bDontPromptShadersError = false;
-		return;
-	}
-
-	glEnable(GL_FRAGMENT_PROGRAM_ARB);
-	gBSPRenderer.glGenProgramsARB(1, &m_uiFragmentPrograms[2]);
-	gBSPRenderer.glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_uiFragmentPrograms[2]);
-
-	gBSPRenderer.glProgramStringARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, sizeof(water_fp_uw_reg) - 1, water_fp_uw_reg);
-	glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &iErrorPos);
-	gBSPRenderer.glGetProgramivARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB, &iIsNative);
-	glDisable(GL_FRAGMENT_PROGRAM_ARB);
-
-	if (iErrorPos != -1 || (iIsNative == 0))
-	{
-		gBSPRenderer.m_bShaderSupport = false;
-		gBSPRenderer.m_bDontPromptShadersError = false;
-		return;
-	}
-
-	glEnable(GL_FRAGMENT_PROGRAM_ARB);
-	gBSPRenderer.glGenProgramsARB(1, &m_uiFragmentPrograms[3]);
-	gBSPRenderer.glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_uiFragmentPrograms[3]);
-
-	gBSPRenderer.glProgramStringARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, sizeof(water_fp_uw_fog) - 1, water_fp_uw_fog);
-	glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &iErrorPos);
-	gBSPRenderer.glGetProgramivARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB, &iIsNative);
-	glDisable(GL_FRAGMENT_PROGRAM_ARB);
-
-	if (iErrorPos != -1 || (iIsNative == 0))
-	{
-		gBSPRenderer.m_bShaderSupport = false;
-		gBSPRenderer.m_bDontPromptShadersError = false;
-		return;
-	}
+	CGLSLShader::Unbind();
 }
 
 /*
@@ -1135,25 +887,12 @@ void CWaterShader::DrawWater()
 	if (m_iNumWaterEntities == 0)
 		return;
 
-	float flMatrix[16];
 	float flTime = gEngfuncs.GetClientTime();
+	int iRadialFog = (gBSPRenderer.m_bRadialFogSupport && gBSPRenderer.m_pCvarRadialFog->value > 0) ? 1 : 0;
+	int iFogEnabled = gHUD.m_pFogSettings.active ? 1 : 0;
 
 	gBSPRenderer.EnableVertexArray();
 	gBSPRenderer.SetTexPointer(0, TC_TEXTURE);
-
-	glEnable(GL_VERTEX_PROGRAM_ARB);
-	glEnable(GL_FRAGMENT_PROGRAM_ARB);
-
-	if (gBSPRenderer.m_bRadialFogSupport && gBSPRenderer.m_pCvarRadialFog->value > 0)
-		gBSPRenderer.glBindProgramARB(GL_VERTEX_PROGRAM_ARB, m_uiVertexPrograms[1]);
-	else
-		gBSPRenderer.glBindProgramARB(GL_VERTEX_PROGRAM_ARB, m_uiVertexPrograms[0]);
-
-	glGetFloatv(GL_PROJECTION_MATRIX, flMatrix);
-	gBSPRenderer.glProgramLocalParameter4fARB(GL_VERTEX_PROGRAM_ARB, 4, flMatrix[0], flMatrix[4], flMatrix[8], flMatrix[12]);
-	gBSPRenderer.glProgramLocalParameter4fARB(GL_VERTEX_PROGRAM_ARB, 5, flMatrix[1], flMatrix[5], flMatrix[9], flMatrix[13]);
-	gBSPRenderer.glProgramLocalParameter4fARB(GL_VERTEX_PROGRAM_ARB, 6, flMatrix[2], flMatrix[6], flMatrix[10], flMatrix[14]);
-	gBSPRenderer.glProgramLocalParameter4fARB(GL_VERTEX_PROGRAM_ARB, 7, flMatrix[3], flMatrix[7], flMatrix[11], flMatrix[15]);
 
 	for (int i = 0; i < m_iNumWaterEntities; i++)
 	{
@@ -1165,48 +904,37 @@ void CWaterShader::DrawWater()
 		if (gHUD.viewFrustum.CullBox(m_pCurWater->mins, m_pCurWater->maxs))
 			continue;
 
+		// The shaders transform with the current matrices.
+		// So the entity translation has to stay on the stack while the surfaces are drawn.
 		glMatrixMode(GL_MODELVIEW);
 		glPushMatrix();
 		glTranslatef(m_pCurWater->entity->curstate.origin[0], m_pCurWater->entity->curstate.origin[1], m_pCurWater->entity->curstate.origin[2]);
 
-		glGetFloatv(GL_MODELVIEW_MATRIX, flMatrix);
-		gBSPRenderer.glProgramLocalParameter4fARB(GL_VERTEX_PROGRAM_ARB, 0, flMatrix[0], flMatrix[4], flMatrix[8], flMatrix[12]);
-		gBSPRenderer.glProgramLocalParameter4fARB(GL_VERTEX_PROGRAM_ARB, 1, flMatrix[1], flMatrix[5], flMatrix[9], flMatrix[13]);
-		gBSPRenderer.glProgramLocalParameter4fARB(GL_VERTEX_PROGRAM_ARB, 2, flMatrix[2], flMatrix[6], flMatrix[10], flMatrix[14]);
-		gBSPRenderer.glProgramLocalParameter4fARB(GL_VERTEX_PROGRAM_ARB, 3, flMatrix[3], flMatrix[7], flMatrix[11], flMatrix[15]);
-
-		glMatrixMode(GL_MODELVIEW);
-		glPopMatrix();
-
 		if (m_vViewOrigin[2] > GetWaterOrigin().z)
 		{
 			glCullFace(GL_FRONT);
-			if (gHUD.m_pFogSettings.active)
-				gBSPRenderer.glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_uiFragmentPrograms[1]);
-			else
-				gBSPRenderer.glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_uiFragmentPrograms[0]);
-
-			gBSPRenderer.glProgramLocalParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 0, gBSPRenderer.m_vRenderOrigin[0], gBSPRenderer.m_vRenderOrigin[1], gBSPRenderer.m_vRenderOrigin[2], 0);
-			gBSPRenderer.glProgramLocalParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 1, m_pWaterFogSettings.color[0], m_pWaterFogSettings.color[1], m_pWaterFogSettings.color[2], 0);
-			gBSPRenderer.glProgramLocalParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 2, m_flFresnelTerm, 0, 0, 0);
-			gBSPRenderer.glProgramLocalParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 3, flTime, 0, 0, 0);
+			m_waterShaderAbove.Bind();
+			m_waterShaderAbove.SetUniform1i(m_waterUniformsAbove.radialfog, iRadialFog);
+			m_waterShaderAbove.SetUniform1i(m_waterUniformsAbove.fogenabled, iFogEnabled);
+			m_waterShaderAbove.SetUniform3f(m_waterUniformsAbove.vieworigin, gBSPRenderer.m_vRenderOrigin[0], gBSPRenderer.m_vRenderOrigin[1], gBSPRenderer.m_vRenderOrigin[2]);
+			m_waterShaderAbove.SetUniform3f(m_waterUniformsAbove.watercolor, m_pWaterFogSettings.color[0], m_pWaterFogSettings.color[1], m_pWaterFogSettings.color[2]);
+			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.fresnel, m_flFresnelTerm);
+			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.time, flTime);
 		}
 		else
 		{
 			glCullFace(GL_BACK);
-			if (gHUD.m_pFogSettings.active)
-				gBSPRenderer.glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_uiFragmentPrograms[3]);
-			else
-				gBSPRenderer.glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, m_uiFragmentPrograms[2]);
-
-			gBSPRenderer.glProgramLocalParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 0, m_pWaterFogSettings.color[0], m_pWaterFogSettings.color[1], m_pWaterFogSettings.color[2], 0);
-			gBSPRenderer.glProgramLocalParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 1, flTime, 0, 0, 0);
+			m_waterShaderUnder.Bind();
+			m_waterShaderUnder.SetUniform1i(m_waterUniformsUnder.radialfog, iRadialFog);
+			m_waterShaderUnder.SetUniform1i(m_waterUniformsUnder.fogenabled, iFogEnabled);
+			m_waterShaderUnder.SetUniform3f(m_waterUniformsUnder.watercolor, m_pWaterFogSettings.color[0], m_pWaterFogSettings.color[1], m_pWaterFogSettings.color[2]);
+			m_waterShaderUnder.SetUniform1f(m_waterUniformsUnder.time, flTime);
 		}
 
 		gBSPRenderer.Bind2DTexture(GL_TEXTURE0_ARB, m_pNormalTexture->iIndex);
 		gBSPRenderer.Bind2DTexture(GL_TEXTURE1_ARB, m_pCurWater->refract);
 
-		// Optimization: Try and find a water entity on the same z coord
+		// Optimisation: Try and find a water entity on the same z coord
 		int j = 0;
 		for (; j < i; j++)
 		{
@@ -1225,10 +953,12 @@ void CWaterShader::DrawWater()
 
 		for (int j = 0; j < m_pCurWater->numsurfaces; j++)
 			gBSPRenderer.DrawPolyFromArray(gBSPRenderer.m_pWorld->surfaces, m_pCurWater->surfaces[j]);
+
+		glMatrixMode(GL_MODELVIEW);
+		glPopMatrix();
 	}
 
-	glDisable(GL_VERTEX_PROGRAM_ARB);
-	glDisable(GL_FRAGMENT_PROGRAM_ARB);
+	CGLSLShader::Unbind(); // Fran: Wasted 3 hours debugging this because I forgot to unbind :)
 	glCullFace(GL_FRONT);
 
 	gBSPRenderer.DisableVertexArray();

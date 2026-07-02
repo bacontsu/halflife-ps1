@@ -27,6 +27,18 @@ Written by Andrew Lucas
 #include "cvardef.h"
 #include "textureloader.h"
 #include "rendererdefs.h"
+#include "glslshader.h"
+
+// Uniforms of the water shaders
+struct glsl_water_uniforms_t
+{
+	GLint radialfog;
+	GLint fogenabled;
+	GLint vieworigin; // Above water only
+	GLint watercolor;
+	GLint fresnel; // Above water only
+	GLint time;
+};
 
 /*
 ====================
@@ -88,8 +100,11 @@ public:
 	int m_iNumPasses;
 
 public:
-	GLuint m_uiVertexPrograms[MAX_WATER_VERTEX_SHADERS];
-	GLuint m_uiFragmentPrograms[MAX_WATER_FRAGMENT_SHADERS];
+	CGLSLShader m_waterShaderAbove;
+	CGLSLShader m_waterShaderUnder;
+
+	glsl_water_uniforms_t m_waterUniformsAbove;
+	glsl_water_uniforms_t m_waterUniformsUnder;
 
 public:
 	fog_settings_t m_pMainFogSettings;
