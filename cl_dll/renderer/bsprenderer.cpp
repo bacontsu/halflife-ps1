@@ -3803,7 +3803,7 @@ void CBSPRenderer::ParseDetailTextureFile()
 		if (!pTexture)
 			continue;
 
-		m_vectorDetailTextures.push_back(DetailTexture(FranUtils::StringUtils::LowerCase(texture), detailTexture, xscale, yscale, pTexture->iIndex));
+		m_vectorDetailTextures.push_back(DetailTexture(FranUtils::StringUtils::LowerCase(texture), detailTexture, pTexture->iIndex, xscale, yscale));
 		iter++;
 	}
 }
