@@ -38,7 +38,7 @@ Written by Andrew Lucas, Richard Rohac, BUzer, Laurie, Botman and Id Software
 //		SHARED DEFS
 //
 //==============================
-#define MAXRENDERENTS 4096
+constexpr int MAXRENDERENTS = 4096;
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846 // matches value in gcc v2 math.h
@@ -48,7 +48,7 @@ Written by Andrew Lucas, Richard Rohac, BUzer, Laurie, Botman and Id Software
 //		TEXTURE LOADER DEFS
 //
 //==============================
-#define MAX_TGA_LOADER_TEXTURES 8192
+constexpr int MAX_TGA_LOADER_TEXTURES = 8192;
 
 //==============================
 //		TEXTURE LOADER STRUCTS
@@ -70,35 +70,35 @@ struct cl_texture_t
 //		PARTICLE ENGINE DEFS
 //
 //==============================
-#define SYSTEM_SHAPE_POINT 0
-#define SYSTEM_SHAPE_BOX 1
-#define SYSTEM_SHAPE_PLANE_ABOVE_PLAYER 2
-#define SYSTEM_SHAPE_BOX_AROUND_PLAYER 3
+constexpr int SYSTEM_SHAPE_POINT = 0;
+constexpr int SYSTEM_SHAPE_BOX = 1;
+constexpr int SYSTEM_SHAPE_PLANE_ABOVE_PLAYER = 2;
+constexpr int SYSTEM_SHAPE_BOX_AROUND_PLAYER = 3;
 
-#define SYSTEM_DISPLAY_NORMAL 0
-#define SYSTEM_DISPLAY_PARALELL 1
-#define SYSTEM_DISPLAY_PLANAR 2
-#define SYSTEM_DISPLAY_TRACER 3
+constexpr int SYSTEM_DISPLAY_NORMAL = 0;
+constexpr int SYSTEM_DISPLAY_PARALELL = 1;
+constexpr int SYSTEM_DISPLAY_PLANAR = 2;
+constexpr int SYSTEM_DISPLAY_TRACER = 3;
 
-#define SYSTEM_RENDERMODE_ADDITIVE 0
-#define SYSTEM_RENDERMODE_ALPHABLEND 1
-#define SYSTEM_RENDERMODE_INTENSITY 2
+constexpr int SYSTEM_RENDERMODE_ADDITIVE = 0;
+constexpr int SYSTEM_RENDERMODE_ALPHABLEND = 1;
+constexpr int SYSTEM_RENDERMODE_INTENSITY = 2;
 
-#define PARTICLE_COLLISION_NONE 0
-#define PARTICLE_COLLISION_DIE 1
-#define PARTICLE_COLLISION_BOUNCE 2
-#define PARTICLE_COLLISION_DECAL 3
-#define PARTICLE_COLLISION_STUCK 4
-#define PARTICLE_COLLISION_NEW_SYSTEM 5
+constexpr int PARTICLE_COLLISION_NONE = 0;
+constexpr int PARTICLE_COLLISION_DIE = 1;
+constexpr int PARTICLE_COLLISION_BOUNCE = 2;
+constexpr int PARTICLE_COLLISION_DECAL = 3;
+constexpr int PARTICLE_COLLISION_STUCK = 4;
+constexpr int PARTICLE_COLLISION_NEW_SYSTEM = 5;
 
-#define PARTICLE_WIND_NONE 0
-#define PARTICLE_WIND_LINEAR 1
-#define PARTICLE_WIND_SINE 2
+constexpr int PARTICLE_WIND_NONE = 0;
+constexpr int PARTICLE_WIND_LINEAR = 1;
+constexpr int PARTICLE_WIND_SINE = 2;
 
-#define PARTICLE_LIGHTCHECK_NONE 0
-#define PARTICLE_LIGHTCHECK_NORMAL 1
-#define PARTICLE_LIGHTCHECK_SCOLOR 2
-#define PARTICLE_LIGHTCHECK_MIXP 3
+constexpr int PARTICLE_LIGHTCHECK_NONE = 0;
+constexpr int PARTICLE_LIGHTCHECK_NORMAL = 1;
+constexpr int PARTICLE_LIGHTCHECK_SCOLOR = 2;
+constexpr int PARTICLE_LIGHTCHECK_MIXP = 3;
 
 //========================================
 //			PARTICLE ENGINE STRUCTS
@@ -259,39 +259,39 @@ struct cl_particle_t
 //		BSP RENDERER DEFS
 //
 //==============================
-#define MAX_DECALTEXTURES 128
-#define MAX_GROUPENTRIES 64
-#define MAX_LIGHTMAPS 64
-#define MAX_DYNLIGHTS 64
-#define MAX_MAP_DETAILOBJECTS 512
-#define MAX_MAP_LEAFS 65534
-#define DEPTHMAP_RESOLUTION 256
-#define MAX_MAP_TEXTURES 512
-#define LIGHTMAP_RESOLUTION 1024
-#define LIGHTMAP_NUMCOLUMNS 8
-#define LIGHTMAP_NUMROWS 8
-#define MAX_SPOTLIGHT_TEXTURES 16
+constexpr int MAX_DECALTEXTURES = 128;
+constexpr int MAX_GROUPENTRIES = 64;
+constexpr int MAX_LIGHTMAPS = 64;
+constexpr int MAX_DYNLIGHTS = 64;
+constexpr int MAX_MAP_DETAILOBJECTS = 512;
+constexpr int MAX_MAP_LEAFS = 65534;
+constexpr int DEPTHMAP_RESOLUTION = 256;
+constexpr int MAX_MAP_TEXTURES = 512;
+constexpr int LIGHTMAP_RESOLUTION = 1024;
+constexpr int LIGHTMAP_NUMCOLUMNS = 8;
+constexpr int LIGHTMAP_NUMROWS = 8;
+constexpr int MAX_SPOTLIGHT_TEXTURES = 16;
 
-#define MAX_GOLDSRC_DLIGHTS 32
-#define MAX_GOLDSRC_ELIGHTS 64
+constexpr int MAX_GOLDSRC_DLIGHTS = 32;
+constexpr int MAX_GOLDSRC_ELIGHTS = 64;
 
-#define SURF_PLANEBACK 2
-#define SURF_DRAWSKY 4
-#define SURF_DRAWSPRITE 8
-#define SURF_DRAWTURB 0x10
-#define SURF_DRAWTILED 0x20
-#define SURF_DRAWBACKGROUND 0x40
-#define SURF_UNDERWATER 0x80
-#define SURF_DONTWARP 0x100
+constexpr int SURF_PLANEBACK = 2;
+constexpr int SURF_DRAWSKY = 4;
+constexpr int SURF_DRAWSPRITE = 8;
+constexpr int SURF_DRAWTURB = 0x10;
+constexpr int SURF_DRAWTILED = 0x20;
+constexpr int SURF_DRAWBACKGROUND = 0x40;
+constexpr int SURF_UNDERWATER = 0x80;
+constexpr int SURF_DONTWARP = 0x100;
 
-#define BLOCK_WIDTH 128
-#define BLOCK_HEIGHT 128
-#define BLOCKLIGHTS_SIZE (18 * 18)
-#define BACKFACE_EPSILON 0.01
+constexpr int BLOCK_WIDTH = 128;
+constexpr int BLOCK_HEIGHT = 128;
+constexpr int BLOCKLIGHTS_SIZE = (18 * 18);
+constexpr int BACKFACE_EPSILON = 0.01;
 
-#define PLANE_X 0
-#define PLANE_Y 1
-#define PLANE_Z 2
+constexpr int PLANE_X = 0;
+constexpr int PLANE_Y = 1;
+constexpr int PLANE_Z = 2;
 
 #define OFFSET(type, variable) ((const void*)&(((type*)NULL)->variable))
 
@@ -520,8 +520,8 @@ struct cl_dlight_t
 //				WATER SHADER DEFS
 //
 //==================================================
-#define MAX_WATER_ENTITIES 64
-#define WATER_RESOLUTION 512
+constexpr int MAX_WATER_ENTITIES = 64;
+constexpr int WATER_RESOLUTION = 512;
 
 //==================================================
 //				WATER SHADER STRUCTS
@@ -551,8 +551,8 @@ struct cl_water_t
 //				MIRROR MANAGER DEFS
 //
 //==================================================
-#define MAX_MIRRORS 32
-#define MIRROR_RESOLUTION 512
+constexpr int MAX_MIRRORS = 32;
+constexpr int MIRROR_RESOLUTION = 512;
 
 //==================================================
 //				MIRROR MANAGER STRUCTS
@@ -576,15 +576,15 @@ struct cl_mirror_t
 //		STUDIO RENDERER DEFS
 //
 //==============================
-#define MAX_MODEL_LIGHTS 6
-#define MAX_MODEL_DECALS 16
-#define MAX_CACHE_MODELS 2048
+constexpr int MAX_MODEL_LIGHTS = 6;
+constexpr int MAX_MODEL_DECALS = 16;
+constexpr int MAX_CACHE_MODELS = 2048;
 
-#define TEXFLAG_NONE 1
-#define TEXFLAG_FULLBRIGHT 1
-#define TEXFLAG_ALTERNATE 2
-#define TEXFLAG_NOMIPMAP 4
-#define TEXFLAG_ERASE 8
+constexpr int TEXFLAG_NONE = 1;
+constexpr int TEXFLAG_FULLBRIGHT = 1;
+constexpr int TEXFLAG_ALTERNATE = 2;
+constexpr int TEXFLAG_NOMIPMAP = 4;
+constexpr int TEXFLAG_ERASE = 8;
 
 //========================================
 //				STUDIO RENDERER STRUCTS
@@ -670,7 +670,7 @@ struct lighting_ext
 //			PROP MANAGER DEFINITIONS
 //
 //========================================
-#define MAX_POINTS 64
+constexpr int MAX_POINTS = 64;
 
 //========================================
 //			PROP MANAGER STRUCTS
@@ -865,5 +865,6 @@ extern void R_Shutdown();
 
 // extern Vector	g_vecFull;
 // extern Vector	g_vecZero;
+constexpr int BASE_EXT_TEXTURE_ID = (1 << 25); // First GL texture id the renderer owns; engine ids stay below this
 extern int current_ext_texture_id;
 #endif

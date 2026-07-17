@@ -27,13 +27,13 @@ Written by Andrew Lucas
 #include "cvardef.h"
 #include "rendererdefs.h"
 
-#define MAX_WADFILES 12
+constexpr int MAX_WADFILES = 12;
 
-#define DDS_MAGIC 0x20534444
+constexpr int DDS_MAGIC = 0x20534444;
 
-#define DDSD_CAPS 0x00000001
-#define DDSD_PIXELFORMAT 0x00001000
-#define DDPF_FOURCC 0x00000004
+constexpr int DDSD_CAPS = 0x00000001;
+constexpr int DDSD_PIXELFORMAT = 0x00001000;
+constexpr int DDPF_FOURCC = 0x00000004;
 
 #define D3DFMT_DXT1 '1TXD' //  DXT1 compression texture format
 #define D3DFMT_DXT5 '5TXD' //  DXT5 compression texture format

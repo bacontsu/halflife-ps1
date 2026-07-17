@@ -2139,6 +2139,9 @@ void CStudioModelRenderer::StudioSetupRenderer(int rendermode)
 	m_fAlpha = 1;
 	m_bUseBlending = false;
 
+	// Start from a known-opaque blend state.
+	glDisable(GL_BLEND);
+
 	// Set transparency
 	glShadeModel(GL_SMOOTH);
 	glEnable(GL_CULL_FACE);
@@ -2221,8 +2224,7 @@ void CStudioModelRenderer::StudioSetupRenderer(int rendermode)
 	{
 		if (gBSPRenderer.m_bShaderSupport && m_pCvarModelShaders->value > 0)
 		{
-			// The vertex only program keeps lighting visible while the
-			// light debug mode has texturing disabled
+			// The vertex only program keeps lighting visible while the light debug mode has texturing disabled
 			if (m_pCvarModelsLightDebug->value > 0)
 			{
 				m_pBoundShader = &m_studioShaderNoFS;

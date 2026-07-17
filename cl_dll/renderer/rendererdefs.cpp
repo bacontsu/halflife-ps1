@@ -51,7 +51,6 @@ extern CGameStudioModelRenderer g_StudioRenderer;
 					 : TrinityBoxOnPlaneSide((emins), (emaxs), (p)))
 #endif
 
-#define BASE_EXT_TEXTURE_ID (1 << 25) // dont use zero
 int current_ext_texture_id = BASE_EXT_TEXTURE_ID;
 
 // Vector g_vecFull(1.0f, 1.0f, 1.0f); // color of 3d attenuation texture

@@ -243,6 +243,10 @@ void CBSPRenderer::Init()
 
 	glFogCoordPointer = (PFNGLFOGCOORDPOINTEREXTPROC)wglGetProcAddress("glFogCoordPointer");
 
+	// GL 1.4 Blend Constant.
+	// Used to drive Translucent Brush-Entity Alpha independently of the Texture Environment (see kRenderTransTexture in DrawBrushModel).
+	glBlendColor = (PFNGLBLENDCOLORPROC)wglGetProcAddress("glBlendColor");
+
 #ifdef HL25_UPDATE
 	glUseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress("glUseProgram");
 #endif
@@ -2906,10 +2910,20 @@ void CBSPRenderer::DrawBrushModel(cl_entity_t* pEntity, bool bStatic)
 	{
 		glDepthMask(GL_FALSE);
 		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 		float alpha = (float)m_pCurrentEntity->curstate.renderamt / 255.0;
-		glColor4f(1, 1, 1, alpha);
+
+		if (glBlendColor != nullptr)
+		{
+			glBlendColor(1, 1, 1, alpha);
+			glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA);
+			glColor4f(1, 1, 1, 1);
+		}
+		else
+		{
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glColor4f(1, 1, 1, alpha);
+		}
 	}
 	else if (m_pCurrentEntity->curstate.rendermode == kRenderTransColor)
 	{
@@ -2953,6 +2967,8 @@ void CBSPRenderer::DrawBrushModel(cl_entity_t* pEntity, bool bStatic)
 	{
 		glDepthMask(GL_TRUE);
 		glDisable(GL_BLEND);
+
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 
 	if (!bStatic)
@@ -3932,7 +3948,6 @@ int CBSPRenderer::ClipPolygonByPlane(const std::vector<Vector>& vecIn, Vector no
 
 	// Clean up the polygon
 	RemoveDuplicateVertices(clippedPolygon);
-	EnsureCounterClockwise(clippedPolygon, normal);
 
 	vecOut = std::move(clippedPolygon);
 	return vecOut.size();

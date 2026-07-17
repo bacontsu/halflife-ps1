@@ -596,7 +596,7 @@ void CGargantua::FlameUpdate()
 			{
 				StreakSplash(trace.vecEndPos, trace.vecPlaneNormal, 6, 20, 50, 400);
 				streaks = true;
-				UTIL_DecalTrace(&trace, DECAL_SMALLSCORCH1 + RANDOM_LONG(0, 2));
+				UTIL_CustomDecal(&trace, "scorch");
 			}
 			// RadiusDamage( trace.vecEndPos, pev, pev, gSkillData.gargantuaDmgFire, CLASS_ALIEN_MONSTER, DMG_BURN );
 			FlameDamage(vecStart, trace.vecEndPos, pev, pev, gSkillData.gargantuaDmgFire, CLASS_ALIEN_MONSTER, DMG_BURN);

@@ -48,9 +48,17 @@ void CTextureLoader::VidInit()
 		return;
 
 	for (int i = 0; i < m_iNumTextures; i++)
-		glDeleteTextures(1, &m_pTextures[i].iIndex);
+	{
+		// Only delete texture ids we actually own.
+		if (m_pTextures[i].iIndex >= BASE_EXT_TEXTURE_ID)
+			glDeleteTextures(1, &m_pTextures[i].iIndex);
 
-	memset(m_pTextures, NULL, sizeof(m_pTextures));
+		// Reset properly.
+		// cl_texture_t holds a std::string (strName).
+		// Memset would corrupt it and leak its buffer.
+		m_pTextures[i] = cl_texture_t{};
+	}
+
 	m_iNumTextures = NULL;
 }
 
@@ -171,7 +179,7 @@ cl_texture_t* CTextureLoader::LoadTexture(const std::string& strFile, int iAltIn
 			gEngfuncs.Con_Printf("Error! Failed to load: %s.\n", szFile);
 			gEngfuncs.COM_FreeFile(pFile);
 
-			memset(pTexture, 0, sizeof(cl_texture_t));
+			*pTexture = cl_texture_t{}; // reset (contains std::string, do not memset)
 			m_iNumTextures--;
 			return nullptr;
 		}
@@ -183,7 +191,7 @@ cl_texture_t* CTextureLoader::LoadTexture(const std::string& strFile, int iAltIn
 			gEngfuncs.Con_Printf("Error! Failed to load: %s.\n", szFile);
 			gEngfuncs.COM_FreeFile(pFile);
 
-			memset(pTexture, 0, sizeof(cl_texture_t));
+			*pTexture = cl_texture_t{}; // reset (contains std::string, do not memset)
 			m_iNumTextures--;
 			return nullptr;
 		}
@@ -714,12 +722,9 @@ LoadTextureScript
 */
 void CTextureLoader::LoadTextureScript()
 {
-	// Clear previous list
-	if (m_iNumTextureEntries != 0)
-	{
-		memset(m_pTextureEntries, 0, sizeof(m_pTextureEntries));
-		m_iNumTextureEntries = 0;
-	}
+	for (int i = 0; i < m_iNumTextureEntries; i++)
+		m_pTextureEntries[i] = texentry_t{};
+	m_iNumTextureEntries = 0;
 
 	std::ifstream inputStream{};
 	std::stringstream strStream{};
