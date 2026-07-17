@@ -428,7 +428,7 @@ void CPropManager::LoadEntVars()
 			pValue = ValueForKey(&m_pBSPEntities[i], "origin");
 			if (!pValue.empty())
 			{
-				strStream.str(pValue);
+				strStream = std::stringstream(pValue); 
 				strStream >> m_pModelLights[m_iNumModelLights].origin[0] >> m_pModelLights[m_iNumModelLights].origin[1] >> m_pModelLights[m_iNumModelLights].origin[2];
 
 				VectorCopy(m_pModelLights[m_iNumModelLights].origin, m_pModelLights[m_iNumModelLights].curstate.origin);
@@ -443,8 +443,13 @@ void CPropManager::LoadEntVars()
 			pValue = ValueForKey(&m_pBSPEntities[i], "rendercolor");
 			if (!pValue.empty())
 			{
-				strStream.str(pValue);
-				strStream >> m_pModelLights[m_iNumModelLights].curstate.rendercolor.r >> m_pModelLights[m_iNumModelLights].curstate.rendercolor.g >> m_pModelLights[m_iNumModelLights].curstate.rendercolor.b;
+				// Extract into ints first - operator>> on byte (unsigned char) reads single characters, not numbers
+				int r{}, g{}, b{};
+				strStream = std::stringstream(pValue);
+				strStream >> r >> g >> b;
+				m_pModelLights[m_iNumModelLights].curstate.rendercolor.r = (byte)r;
+				m_pModelLights[m_iNumModelLights].curstate.rendercolor.g = (byte)g;
+				m_pModelLights[m_iNumModelLights].curstate.rendercolor.b = (byte)b;
 			}
 
 			model_t* pWorld = IEngineStudio.GetModelByIndex(1);
@@ -469,14 +474,16 @@ void CPropManager::LoadEntVars()
 			if (!pValue.empty())
 				continue;
 
+			DecalMessage decal;
+
 			// Always TRUE
-			m_vectorDecals.back().persistent = true;
+			decal.persistent = true;
 
 			pValue = ValueForKey(&m_pBSPEntities[i], "origin");
 			if (!pValue.empty())
 			{
-				strStream.str(pValue);
-				strStream >> m_vectorDecals.back().pos[0] >> m_vectorDecals.back().pos[1] >> m_vectorDecals.back().pos[2];
+				strStream = std::stringstream(pValue);
+				strStream >> decal.pos[0] >> decal.pos[1] >> decal.pos[2];
 			}
 
 			pValue = ValueForKey(&m_pBSPEntities[i], "message");
@@ -484,7 +491,8 @@ void CPropManager::LoadEntVars()
 			if (pValue.empty())
 				continue;
 
-			m_vectorDecals.back().name = pValue;
+			decal.name = pValue;
+			m_vectorDecals.push_back(decal);
 		}
 		else if (pValue == "item_generic")
 		{
@@ -495,7 +503,7 @@ void CPropManager::LoadEntVars()
 
 			pValue = ValueForKey(&m_pBSPEntities[i], "model");
 
-			if (!pValue.empty())
+			if (pValue.empty())
 				continue;
 
 			if (!FranUtils::StringUtils::HasInsensitiveSubstring(pValue, ".mdl"))
@@ -506,7 +514,7 @@ void CPropManager::LoadEntVars()
 
 			if (!LoadMDL(pValue, &m_pEntities[m_iNumEntities], &m_pBSPEntities[i]))
 			{
-				gEngfuncs.Con_Printf("BSP Loader: Failed to model load %s on the client!\n", pValue);
+				gEngfuncs.Con_Printf("BSP Loader: Failed to model load %s on the client!\n", pValue.c_str());
 				continue;
 			}
 
@@ -521,7 +529,7 @@ void CPropManager::LoadEntVars()
 			pValue = ValueForKey(&m_pBSPEntities[i], "origin");
 			if (!pValue.empty())
 			{
-				strStream.str(pValue);
+				strStream = std::stringstream(pValue); 
 				strStream >> m_pEntities[m_iNumEntities].origin[0] >> m_pEntities[m_iNumEntities].origin[1] >> m_pEntities[m_iNumEntities].origin[2];
 
 				VectorCopy(m_pEntities[m_iNumEntities].origin, m_pEntities[m_iNumEntities].curstate.origin);
@@ -530,7 +538,7 @@ void CPropManager::LoadEntVars()
 			pValue = ValueForKey(&m_pBSPEntities[i], "angles");
 			if (!pValue.empty())
 			{
-				strStream.str(pValue);
+				strStream = std::stringstream(pValue); 
 				strStream >> m_pEntities[m_iNumEntities].angles[0] >> m_pEntities[m_iNumEntities].angles[1] >> m_pEntities[m_iNumEntities].angles[2];
 
 				m_pEntities[m_iNumEntities].curstate.angles = m_pEntities[m_iNumEntities].angles;
@@ -581,8 +589,13 @@ void CPropManager::LoadEntVars()
 			pValue = ValueForKey(&m_pBSPEntities[i], "rendercolor");
 			if (!pValue.empty())
 			{
-				strStream.str(pValue);
-				strStream >> m_pEntities[m_iNumEntities].curstate.rendercolor.r >> m_pEntities[m_iNumEntities].curstate.rendercolor.g >> m_pEntities[m_iNumEntities].curstate.rendercolor.b;
+				// Extract into ints first - operator>> on byte (unsigned char) reads single characters, not numbers
+				int r{}, g{}, b{};
+				strStream = std::stringstream(pValue);
+				strStream >> r >> g >> b;
+				m_pEntities[m_iNumEntities].curstate.rendercolor.r = (byte)r;
+				m_pEntities[m_iNumEntities].curstate.rendercolor.g = (byte)g;
+				m_pEntities[m_iNumEntities].curstate.rendercolor.b = (byte)b;
 			}
 
 			pValue = ValueForKey(&m_pBSPEntities[i], "lightorigin");
@@ -595,7 +608,7 @@ void CPropManager::LoadEntVars()
 				{
 					pValue = ValueForKey(&m_pBSPEntities[j], "classname");
 
-					if (pValue == "info_light_origin")
+					if (pValue != "info_light_origin")
 						continue;
 
 					pValue = ValueForKey(&m_pBSPEntities[j], "targetname");
@@ -607,7 +620,7 @@ void CPropManager::LoadEntVars()
 							pValue = ValueForKey(&m_pBSPEntities[j], "origin");
 							if (!pValue.empty())
 							{
-								strStream.str(pValue);
+								strStream = std::stringstream(pValue); 
 								strStream >> m_pCurrentExtraData->lightorigin[0] >> m_pCurrentExtraData->lightorigin[1] >> m_pCurrentExtraData->lightorigin[2];
 
 								break;
@@ -863,7 +876,7 @@ bool CPropManager::SetupCable(cabledata_t* cable, entity_t* entity)
 	if (pValue.empty())
 		return false;
 
-	strStream.str(pValue);
+	strStream = std::stringstream(pValue); 
 	strStream >> vposition1[0] >> vposition1[1] >> vposition1[2];
 
 	// Find our target entity
@@ -889,7 +902,7 @@ bool CPropManager::SetupCable(cabledata_t* cable, entity_t* entity)
 				return false;
 
 			// Copy origin over
-			strStream.str(pValue);
+			strStream = std::stringstream(pValue); 
 			strStream >> vposition2[0] >> vposition2[1] >> vposition2[2];
 		}
 	}

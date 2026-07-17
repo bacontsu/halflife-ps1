@@ -825,14 +825,7 @@ void CBSPRenderer::AddLightStyle(size_t index, const std::string& strStyle)
 		m_vectorLightStyles.resize(index + 1);
 	}
 
-	// If the index is already taken, replace it
-	if (m_vectorLightStyles.size() > index)
-	{
-		m_vectorLightStyles[index] = LightStyle(strStyle, 256);
-		return;
-	}
-
-	m_vectorLightStyles.insert(m_vectorLightStyles.begin() + index, LightStyle(strStyle, 256));
+	m_vectorLightStyles[index] = LightStyle(strStyle, 256);
 }
 
 /*
@@ -3922,6 +3915,9 @@ int CBSPRenderer::ClipPolygonByPlane(const std::vector<Vector>& vecIn, Vector no
 	std::vector<Vector> clippedPolygon;
 	size_t numPoints = vecIn.size();
 
+	// Each clip plane can add at most one extra vertex to a convex polygon
+	clippedPolygon.reserve(numPoints + 2);
+
 	for (size_t i = 0; i < numPoints; i++)
 	{
 		size_t next = (i + 1) % numPoints; // Wrap around to the first vertex
@@ -4557,6 +4553,7 @@ void CBSPRenderer::DecalSurface(msurface_t* surf, DecalTexture& texture, cl_enti
 	pDecal->polys.push_back(CustomDecalPoly());
 
 	CustomDecalPoly& poly = pDecal->polys.back();
+	poly.verts.reserve(nv);
 
 	for (int j = 0; j < nv; j++)
 	{

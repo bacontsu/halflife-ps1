@@ -1969,7 +1969,10 @@ void CStudioModelRenderer::StudioDrawWireframe()
 
 	// Ugh... this is so ugly
 	// Should we find a better way to do this?
-	for (const auto& decalIndex : m_mapEntityStudioDecals[m_pCurrentEntity])
+	// (find() so we don't insert an empty entry for every entity drawn)
+	static const std::vector<int> emptyDecalIndices;
+	const auto wireDecalsIt = m_mapEntityStudioDecals.find(m_pCurrentEntity);
+	for (const auto& decalIndex : (wireDecalsIt != m_mapEntityStudioDecals.end()) ? wireDecalsIt->second : emptyDecalIndices)
 	{
 		int iter = 0;
 		auto& tempDecal = m_vectorStudioDecals[decalIndex];
@@ -3902,7 +3905,12 @@ StudioAllocDecal
 */
 size_t CStudioModelRenderer::StudioAllocDecal()
 {
-	m_vectorStudioDecals.push_back(StudioDecal());
+	StudioDecal& decal = m_vectorStudioDecals.emplace_back();
+
+	// Typical decals only span a handful of triangles
+	decal.polys.reserve(16);
+	decal.verts.reserve(32);
+
 	m_mapEntityStudioDecals[m_pCurrentEntity].push_back(m_vectorStudioDecals.size() - 1);
 	return m_vectorStudioDecals.size() - 1;
 }
@@ -3977,6 +3985,11 @@ void CStudioModelRenderer::StudioDecalTriangle(studiotri_t* tri, Vector position
 {
 	std::vector<Vector> dverts1;
 	std::vector<Vector> dverts2;
+
+	// A triangle clipped by 4 planes has at most 7 verts
+	dverts1.reserve(8);
+	dverts2.reserve(8);
+
 	DecalTexture& decalTex = gBSPRenderer.m_mapDecalTexGroups[decal.textureBinding.decalGroup][decal.textureBinding.decalGroupMember];
 
 	Vector norm, v1, v2, v3;
@@ -4323,6 +4336,10 @@ void CStudioModelRenderer::StudioDecalExternal(Vector vpos, Vector vnorm, const 
 	std::vector<Vector> dverts1;
 	std::vector<Vector> dverts2;
 
+	// A triangle clipped by 4 planes has at most 7 verts
+	dverts1.reserve(8);
+	dverts2.reserve(8);
+
 	std::string group = name;
 	std::string randomDecal = gBSPRenderer.GetRandomDecalFromGroup(name);
 
@@ -4446,7 +4463,6 @@ void CStudioModelRenderer::StudioDecalExternal(Vector vpos, Vector vnorm, const 
 
 					VectorMASSE(vtranspos, -xsize, right, planepoint);
 					nv = gBSPRenderer.ClipPolygonByPlane(dverts1, right, planepoint, dverts2);
-					dverts2.resize(nv); // Just in case
 
 					if (nv < 3)
 						continue;
