@@ -428,7 +428,7 @@ void CPropManager::LoadEntVars()
 			pValue = ValueForKey(&m_pBSPEntities[i], "origin");
 			if (!pValue.empty())
 			{
-				strStream = std::stringstream(pValue); 
+				strStream = std::stringstream(pValue);
 				strStream >> m_pModelLights[m_iNumModelLights].origin[0] >> m_pModelLights[m_iNumModelLights].origin[1] >> m_pModelLights[m_iNumModelLights].origin[2];
 
 				VectorCopy(m_pModelLights[m_iNumModelLights].origin, m_pModelLights[m_iNumModelLights].curstate.origin);
@@ -529,7 +529,7 @@ void CPropManager::LoadEntVars()
 			pValue = ValueForKey(&m_pBSPEntities[i], "origin");
 			if (!pValue.empty())
 			{
-				strStream = std::stringstream(pValue); 
+				strStream = std::stringstream(pValue);
 				strStream >> m_pEntities[m_iNumEntities].origin[0] >> m_pEntities[m_iNumEntities].origin[1] >> m_pEntities[m_iNumEntities].origin[2];
 
 				VectorCopy(m_pEntities[m_iNumEntities].origin, m_pEntities[m_iNumEntities].curstate.origin);
@@ -538,7 +538,7 @@ void CPropManager::LoadEntVars()
 			pValue = ValueForKey(&m_pBSPEntities[i], "angles");
 			if (!pValue.empty())
 			{
-				strStream = std::stringstream(pValue); 
+				strStream = std::stringstream(pValue);
 				strStream >> m_pEntities[m_iNumEntities].angles[0] >> m_pEntities[m_iNumEntities].angles[1] >> m_pEntities[m_iNumEntities].angles[2];
 
 				m_pEntities[m_iNumEntities].curstate.angles = m_pEntities[m_iNumEntities].angles;
@@ -620,7 +620,7 @@ void CPropManager::LoadEntVars()
 							pValue = ValueForKey(&m_pBSPEntities[j], "origin");
 							if (!pValue.empty())
 							{
-								strStream = std::stringstream(pValue); 
+								strStream = std::stringstream(pValue);
 								strStream >> m_pCurrentExtraData->lightorigin[0] >> m_pCurrentExtraData->lightorigin[1] >> m_pCurrentExtraData->lightorigin[2];
 
 								break;
@@ -876,7 +876,7 @@ bool CPropManager::SetupCable(cabledata_t* cable, entity_t* entity)
 	if (pValue.empty())
 		return false;
 
-	strStream = std::stringstream(pValue); 
+	strStream = std::stringstream(pValue);
 	strStream >> vposition1[0] >> vposition1[1] >> vposition1[2];
 
 	// Find our target entity
@@ -902,7 +902,7 @@ bool CPropManager::SetupCable(cabledata_t* cable, entity_t* entity)
 				return false;
 
 			// Copy origin over
-			strStream = std::stringstream(pValue); 
+			strStream = std::stringstream(pValue);
 			strStream >> vposition2[0] >> vposition2[1] >> vposition2[2];
 		}
 	}
