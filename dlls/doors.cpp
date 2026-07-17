@@ -27,6 +27,11 @@
 #include "cbase.h"
 #include "doors.h"
 #include "movewith.h"
+// RENDERERS START
+#include "player.h"
+#include "UserMessages.h"
+#include "watershaderdefs.h"
+// RENDERERS END
 
 extern void SetMovedir(entvars_t* ev);
 
@@ -325,10 +330,115 @@ touch or takedamage doors).
 */
 
 LINK_ENTITY_TO_CLASS(func_door, CBaseDoor);
+
+// RENDERERS START
 //
-// func_water - same as a door.
+// func_water - same as a door, but carries the
+// client water shader settings as keyvalues.
 //
-LINK_ENTITY_TO_CLASS(func_water, CBaseDoor);
+class CFuncWater : public CBaseDoor
+{
+public:
+	bool KeyValue(KeyValueData* pkvd) override;
+	void SendInitMessage(CBasePlayer* player) override;
+
+	bool Save(CSave& save) override;
+	bool Restore(CRestore& restore) override;
+
+	static TYPEDESCRIPTION m_SaveData[];
+
+	int m_iFogStart = WATER_DEFAULT_FOG_START;
+	int m_iFogEnd = WATER_DEFAULT_FOG_END;
+
+	Vector m_vecWaterColor = Vector(WATER_DEFAULT_COLOR_R, WATER_DEFAULT_COLOR_G, WATER_DEFAULT_COLOR_B);
+
+	float m_flFresnel = WATER_DEFAULT_FRESNEL;
+
+	// WaveHeight lives in pev->scale, like the engine expects
+	float m_flWaveFreq = WATER_DEFAULT_WAVE_FREQ;
+	float m_flWaveSpeed = WATER_DEFAULT_WAVE_SPEED;
+};
+
+LINK_ENTITY_TO_CLASS(func_water, CFuncWater);
+
+TYPEDESCRIPTION CFuncWater::m_SaveData[] =
+	{
+		DEFINE_FIELD(CFuncWater, m_iFogStart, FIELD_INTEGER),
+		DEFINE_FIELD(CFuncWater, m_iFogEnd, FIELD_INTEGER),
+		DEFINE_FIELD(CFuncWater, m_vecWaterColor, FIELD_VECTOR),
+		DEFINE_FIELD(CFuncWater, m_flFresnel, FIELD_FLOAT),
+		DEFINE_FIELD(CFuncWater, m_flWaveFreq, FIELD_FLOAT),
+		DEFINE_FIELD(CFuncWater, m_flWaveSpeed, FIELD_FLOAT),
+};
+
+IMPLEMENT_SAVERESTORE(CFuncWater, CBaseDoor);
+
+bool CFuncWater::KeyValue(KeyValueData* pkvd)
+{
+	if (FStrEq(pkvd->szKeyName, "fogstart"))
+	{
+		m_iFogStart = atoi(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "fogend"))
+	{
+		m_iFogEnd = atoi(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "colr"))
+	{
+		m_vecWaterColor.x = atoi(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "colg"))
+	{
+		m_vecWaterColor.y = atoi(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "colb"))
+	{
+		m_vecWaterColor.z = atoi(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "fresnel"))
+	{
+		m_flFresnel = atof(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "WaveFreq"))
+	{
+		m_flWaveFreq = atof(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "WaveSpeed"))
+	{
+		m_flWaveSpeed = atof(pkvd->szValue);
+		return true;
+	}
+
+	return CBaseDoor::KeyValue(pkvd);
+}
+
+void CFuncWater::SendInitMessage(CBasePlayer* player)
+{
+	if (player != nullptr)
+		MESSAGE_BEGIN(MSG_ONE, gmsgWaterInfo, nullptr, player->pev);
+	else
+		MESSAGE_BEGIN(MSG_ALL, gmsgWaterInfo, nullptr);
+
+	WRITE_SHORT(entindex());
+	WRITE_BYTE(m_vecWaterColor.x);
+	WRITE_BYTE(m_vecWaterColor.y);
+	WRITE_BYTE(m_vecWaterColor.z);
+	WRITE_SHORT(m_iFogStart);
+	WRITE_SHORT(m_iFogEnd);
+	WRITE_SHORT(m_flFresnel * 100);
+	WRITE_SHORT(pev->scale * 8.0f * 10.0f); // WaveHeight in units, 0.1 precision
+	WRITE_SHORT(m_flWaveFreq * 1000);
+	WRITE_SHORT(m_flWaveSpeed * 100);
+	MESSAGE_END();
+}
+// RENDERERS END
 
 //MH	this new spawn function messes up SF_DOOR_START_OPEN
 //		so replace it with the old one (below)

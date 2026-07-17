@@ -86,6 +86,7 @@ void LinkUserMessages()
 	gmsgFreeEnt = REG_USER_MSG("FreeEnt", -1);
 	gmsgCreateSystem = REG_USER_MSG("Particle", -1);
 	gmsgViewmodelSkin = REG_USER_MSG("WpnSkn", -1);
+	gmsgWaterInfo = REG_USER_MSG("WaterInfo", -1);
 	// RENDERERS END
 
 	gmsgWeapons = REG_USER_MSG("Weapons", 8);

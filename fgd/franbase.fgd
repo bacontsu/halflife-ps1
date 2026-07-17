@@ -3036,6 +3036,14 @@
 		-5: "Lava"
 	]
 	WaveHeight(string) : "Wave Height" : "0"
+	WaveFreq(string) : "Wave Frequency (radians per unit)" : "0.05"
+	WaveSpeed(string) : "Wave Speed (radians per second)" : "1.0"
+	fogstart(integer) : "Underwater Fog Start" : 100
+	fogend(integer) : "Underwater Fog End" : 400
+	colr(integer) : "Water Color R" : 64
+	colg(integer) : "Water Color G" : 80
+	colb(integer) : "Water Color B" : 90
+	fresnel(string) : "Fresnel Term" : "1.0"
 ]
 
 @PointClass base(Targetname, Targetx, Master) iconsprite("sprites/game.spr") = game_counter : "Fires when it hits limit"

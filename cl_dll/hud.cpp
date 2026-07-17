@@ -401,6 +401,11 @@ int __MsgFunc_DynLight(const char* pszName, int iSize, void* pbuf)
 	return gBSPRenderer.MsgDynLight(pszName, iSize, pbuf);
 }
 
+int __MsgFunc_WaterInfo(const char* pszName, int iSize, void* pbuf)
+{
+	return gWaterShader.MsgWaterInfo(pszName, iSize, pbuf);
+}
+
 int __MsgFunc_FreeEnt(const char* pszName, int iSize, void* pbuf)
 {
 	return gHUD.MsgFunc_FreeEnt(pszName, iSize, pbuf);
@@ -472,6 +477,7 @@ void CHud::Init()
 	HOOK_MESSAGE(LightStyle);
 	HOOK_MESSAGE(CreateDecal);
 	HOOK_MESSAGE(StudioDecal);
+	HOOK_MESSAGE(WaterInfo);
 	HOOK_MESSAGE(SkyMark_S);
 	HOOK_MESSAGE(SkyMark_W);
 	HOOK_MESSAGE(DynLight);

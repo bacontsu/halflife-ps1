@@ -28,10 +28,12 @@ Written by Andrew Lucas
 #include "textureloader.h"
 #include "rendererdefs.h"
 #include "glslshader.h"
+#include "watershaderdefs.h"
 
 #include <deque>
+#include <unordered_map>
 
-// Uniforms of the water shaders
+// Uniforms of the Water Shaders
 struct glsl_water_uniforms_t
 {
 	GLint radialfog;
@@ -40,6 +42,39 @@ struct glsl_water_uniforms_t
 	GLint watercolor;
 	GLint fresnel; // Above water only
 	GLint time;
+
+	GLint waveheight;
+	GLint wavefreq;
+	GLint wavespeed;
+};
+
+// Per-entity Water Settings.
+// Received from the Server's func_water via the WaterInfo message.
+struct water_settings_t
+{
+	fog_settings_t fog;
+	float fresnel;
+
+	float waveheight;
+	float wavefreq;
+	float wavespeed;
+
+	water_settings_t()
+	{
+		fog.color.x = WATER_DEFAULT_COLOR_R / 255.0f;
+		fog.color.y = WATER_DEFAULT_COLOR_G / 255.0f;
+		fog.color.z = WATER_DEFAULT_COLOR_B / 255.0f;
+		fog.start = WATER_DEFAULT_FOG_START;
+		fog.end = WATER_DEFAULT_FOG_END;
+		fog.affectsky = true;
+		fog.active = true;
+
+		fresnel = WATER_DEFAULT_FRESNEL;
+
+		waveheight = 0.0f;
+		wavefreq = WATER_DEFAULT_WAVE_FREQ;
+		wavespeed = WATER_DEFAULT_WAVE_SPEED;
+	}
 };
 
 /*
@@ -70,12 +105,16 @@ public:
 	void FinishReflect();
 
 	void SetupClipping(ref_params_t* pparams, bool isrefracting);
-	void LoadScript();
 
 	bool ViewInWater();
 	bool ShouldReflect(int index);
 
 	Vector GetWaterOrigin(cl_water_t* pwater = nullptr);
+
+	void SetWaterSettings(int entindex, const water_settings_t& settings);
+	const water_settings_t& GetWaterSettings(const cl_water_t* pwater);
+
+	int MsgWaterInfo(const char* pszName, int iSize, void* pbuf);
 
 public:
 	bool m_bViewInWater;
@@ -111,9 +150,9 @@ public:
 
 public:
 	fog_settings_t m_pMainFogSettings;
-	fog_settings_t m_pWaterFogSettings;
 
-	float m_flFresnelTerm;
+	// Water Settings Received from the Server, keyed by Entity Index.
+	std::unordered_map<int, water_settings_t> m_mapWaterSettings;
 };
 
 extern CWaterShader gWaterShader;

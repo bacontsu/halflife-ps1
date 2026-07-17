@@ -71,6 +71,7 @@ inline int gmsgCreateDLight = 0;
 inline int gmsgFreeEnt = 0;
 inline int gmsgCreateSystem = 0;
 inline int gmsgViewmodelSkin = 0;
+inline int gmsgWaterInfo = 0;
 //RENDERERS END
 
 inline int gmsgWeapons = 0;

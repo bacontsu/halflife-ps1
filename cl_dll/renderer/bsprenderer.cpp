@@ -1012,7 +1012,6 @@ void CBSPRenderer::SetupRenderer()
 
 	g_StudioRenderer.StudioSwapEngineCache();
 	CheckTextures(); // Do it for world seperately
-	gWaterShader.LoadScript();
 
 	LoadDecals();
 	CreateTextures();

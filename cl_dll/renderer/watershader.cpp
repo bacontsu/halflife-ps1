@@ -56,13 +56,24 @@ extern float sgn(float a);
 char water_vertex_shader[] =
 	"#version 120\n"
 	"uniform int v_radialfog;\n"
+	"uniform float v_time;\n"
+	"uniform float v_waveheight;\n"
+	"uniform float v_wavefreq;\n"
+	"uniform float v_wavespeed;\n"
 	"void main()\n"
 	"{\n"
-	"	vec4 eyepos = gl_ModelViewMatrix * gl_Vertex;\n"
+	"	vec4 vert = gl_Vertex;\n"
+	"	if (v_waveheight > 0.0)\n"
+	"	{\n"
+	"		float wave = sin(v_time * v_wavespeed + vert.x * v_wavefreq);\n"
+	"		wave += cos(v_time * v_wavespeed * 0.83 + vert.y * v_wavefreq * 1.27);\n"
+	"		vert.z += wave * 0.5 * v_waveheight;\n"
+	"	}\n"
+	"	vec4 eyepos = gl_ModelViewMatrix * vert;\n"
 	"	gl_Position = gl_ProjectionMatrix * eyepos;\n"
 	"	gl_TexCoord[0] = vec4(gl_MultiTexCoord0.xy * 0.0078125, 0.0, 1.0);\n"
 	"	gl_TexCoord[1] = gl_Position;\n"
-	"	gl_TexCoord[2] = vec4(gl_Vertex.xyz, 1.0);\n"
+	"	gl_TexCoord[2] = vec4(vert.xyz, 1.0);\n"
 	"	gl_FogFragCoord = (v_radialfog != 0) ? length(eyepos.xyz) : gl_Position.z;\n"
 	"}\n";
 
@@ -166,6 +177,9 @@ void CWaterShader::Init()
 	m_waterUniformsAbove.watercolor = m_waterShaderAbove.GetUniform("v_watercolor");
 	m_waterUniformsAbove.fresnel = m_waterShaderAbove.GetUniform("v_fresnel");
 	m_waterUniformsAbove.time = m_waterShaderAbove.GetUniform("v_time");
+	m_waterUniformsAbove.waveheight = m_waterShaderAbove.GetUniform("v_waveheight");
+	m_waterUniformsAbove.wavefreq = m_waterShaderAbove.GetUniform("v_wavefreq");
+	m_waterUniformsAbove.wavespeed = m_waterShaderAbove.GetUniform("v_wavespeed");
 
 	m_waterUniformsUnder.radialfog = m_waterShaderUnder.GetUniform("v_radialfog");
 	m_waterUniformsUnder.fogenabled = m_waterShaderUnder.GetUniform("v_fogenabled");
@@ -173,6 +187,9 @@ void CWaterShader::Init()
 	m_waterUniformsUnder.watercolor = m_waterShaderUnder.GetUniform("v_watercolor");
 	m_waterUniformsUnder.fresnel = -1;
 	m_waterUniformsUnder.time = m_waterShaderUnder.GetUniform("v_time");
+	m_waterUniformsUnder.waveheight = m_waterShaderUnder.GetUniform("v_waveheight");
+	m_waterUniformsUnder.wavefreq = m_waterShaderUnder.GetUniform("v_wavefreq");
+	m_waterUniformsUnder.wavespeed = m_waterShaderUnder.GetUniform("v_wavespeed");
 
 	m_waterShaderAbove.Bind();
 	m_waterShaderAbove.SetUniform1i(m_waterShaderAbove.GetUniform("normalmap"), 0);
@@ -237,6 +254,7 @@ void CWaterShader::VidInit()
 	}
 
 	ClearEntities();
+	m_mapWaterSettings.clear();
 }
 
 /*
@@ -265,55 +283,66 @@ void CWaterShader::Restore()
 
 /*
 ====================
-LoadScript
+MsgWaterInfo
 
 ====================
 */
-void CWaterShader::LoadScript()
+int CWaterShader::MsgWaterInfo(const char* pszName, int iSize, void* pbuf)
 {
-	const std::string& mapScriptName = std::string(std::string("scripts/water_") + FilenameFromPath(gEngfuncs.pfnGetLevelName()) + ".txt");
-	FranUtils::FileSystem::StringMap outputData;
+	BEGIN_READ(pbuf, iSize);
 
-	bool result = FranUtils::FileSystem::ParseBasicFile(mapScriptName, outputData);
+	int entindex = READ_SHORT();
 
-	if (!result)
-	{
-		gEngfuncs.Con_Printf("Could not load water definition file for map, falling back to default!\n");
-		result = FranUtils::FileSystem::ParseBasicFile("scripts/water_default.txt", outputData);
-	}
+	water_settings_t settings;
+	settings.fog.color.x = (float)READ_BYTE() / 255.0f;
+	settings.fog.color.y = (float)READ_BYTE() / 255.0f;
+	settings.fog.color.z = (float)READ_BYTE() / 255.0f;
+	settings.fog.start = READ_SHORT();
+	settings.fog.end = READ_SHORT();
+	settings.fog.affectsky = true;
+	settings.fog.active = (settings.fog.start >= 1 || settings.fog.end >= 1);
 
-	if (!result)
-	{
-		gEngfuncs.Con_Printf("Could not load default water definition file 'scripts/water_default.txt'!\n");
+	settings.fresnel = (float)READ_SHORT() / 100.0f;
+	if (settings.fresnel <= 0)
+		settings.fresnel = WATER_DEFAULT_FRESNEL;
 
-		memset(&m_pWaterFogSettings, 0, sizeof(fog_settings_t));
-		m_flFresnelTerm = 1;
-		return;
-	}
+	settings.waveheight = (float)READ_SHORT() / 10.0f;
+	settings.wavefreq = (float)READ_SHORT() / 1000.0f;
+	settings.wavespeed = (float)READ_SHORT() / 100.0f;
 
-	if (!outputData.contains("fresnel"))
-		m_flFresnelTerm = std::stof(outputData.at("fresnel"));
-	if (!outputData.contains("colr"))
-		m_pWaterFogSettings.color[0] = std::stof(outputData.at("colr")) / 255.0f;
-	if (!outputData.contains("colg"))
-		m_pWaterFogSettings.color[1] = std::stof(outputData.at("colg")) / 255.0f;
-	if (!outputData.contains("colb"))
-		m_pWaterFogSettings.color[2] = std::stof(outputData.at("colb")) / 255.0f;
-	if (!outputData.contains("fogend"))
-		m_pWaterFogSettings.end = std::stof(outputData.at("fogend"));
-	if (!outputData.contains("fogstart"))
-		m_pWaterFogSettings.start = std::stof(outputData.at("fogstart"));
+	SetWaterSettings(entindex, settings);
+	return 1;
+}
 
-	// always true
-	m_pWaterFogSettings.affectsky = true;
+/*
+====================
+SetWaterSettings
 
-	if (m_pWaterFogSettings.end < 1 && m_pWaterFogSettings.start < 1)
-		m_pWaterFogSettings.active = false;
-	else
-		m_pWaterFogSettings.active = true;
+====================
+*/
+void CWaterShader::SetWaterSettings(int entindex, const water_settings_t& settings)
+{
+	m_mapWaterSettings[entindex] = settings;
+}
 
-	if (m_flFresnelTerm <= 0)
-		m_flFresnelTerm = 1;
+/*
+====================
+GetWaterSettings
+
+====================
+*/
+const water_settings_t& CWaterShader::GetWaterSettings(const cl_water_t* pwater)
+{
+	static const water_settings_t defaultSettings;
+
+	if (pwater == nullptr || pwater->entity == nullptr)
+		return defaultSettings;
+
+	const auto it = m_mapWaterSettings.find(pwater->entity->index);
+	if (it == m_mapWaterSettings.end())
+		return defaultSettings;
+
+	return it->second;
 }
 
 /*
@@ -593,7 +622,7 @@ void CWaterShader::DrawWaterPasses(ref_params_t* pparams)
 
 		if (ViewInWater())
 		{
-			gHUD.m_pFogSettings = m_pWaterFogSettings;
+			gHUD.m_pFogSettings = GetWaterSettings(m_pCurWater).fog;
 			m_bViewInWater = true;
 			break;
 		}
@@ -712,7 +741,7 @@ void CWaterShader::SetupRefract()
 		SetupClipping(m_pViewParams, false);
 
 		gHUD.viewFrustum.SetExtraCullBox(m_pCurWater->entity->curstate.mins, m_pCurWater->entity->curstate.maxs);
-		gHUD.m_pFogSettings = m_pWaterFogSettings;
+		gHUD.m_pFogSettings = GetWaterSettings(m_pCurWater).fog;
 	}
 	else
 	{
@@ -874,6 +903,8 @@ void CWaterShader::DrawWater()
 		glPushMatrix();
 		glTranslatef(m_pCurWater->entity->curstate.origin[0], m_pCurWater->entity->curstate.origin[1], m_pCurWater->entity->curstate.origin[2]);
 
+		const water_settings_t& settings = GetWaterSettings(m_pCurWater);
+
 		if (m_vViewOrigin[2] > GetWaterOrigin().z)
 		{
 			glCullFace(GL_FRONT);
@@ -881,9 +912,12 @@ void CWaterShader::DrawWater()
 			m_waterShaderAbove.SetUniform1i(m_waterUniformsAbove.radialfog, iRadialFog);
 			m_waterShaderAbove.SetUniform1i(m_waterUniformsAbove.fogenabled, iFogEnabled);
 			m_waterShaderAbove.SetUniform3f(m_waterUniformsAbove.vieworigin, gBSPRenderer.m_vRenderOrigin[0], gBSPRenderer.m_vRenderOrigin[1], gBSPRenderer.m_vRenderOrigin[2]);
-			m_waterShaderAbove.SetUniform3f(m_waterUniformsAbove.watercolor, m_pWaterFogSettings.color[0], m_pWaterFogSettings.color[1], m_pWaterFogSettings.color[2]);
-			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.fresnel, m_flFresnelTerm);
+			m_waterShaderAbove.SetUniform3f(m_waterUniformsAbove.watercolor, settings.fog.color[0], settings.fog.color[1], settings.fog.color[2]);
+			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.fresnel, settings.fresnel);
 			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.time, flTime);
+			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.waveheight, settings.waveheight);
+			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.wavefreq, settings.wavefreq);
+			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.wavespeed, settings.wavespeed);
 		}
 		else
 		{
@@ -891,8 +925,11 @@ void CWaterShader::DrawWater()
 			m_waterShaderUnder.Bind();
 			m_waterShaderUnder.SetUniform1i(m_waterUniformsUnder.radialfog, iRadialFog);
 			m_waterShaderUnder.SetUniform1i(m_waterUniformsUnder.fogenabled, iFogEnabled);
-			m_waterShaderUnder.SetUniform3f(m_waterUniformsUnder.watercolor, m_pWaterFogSettings.color[0], m_pWaterFogSettings.color[1], m_pWaterFogSettings.color[2]);
+			m_waterShaderUnder.SetUniform3f(m_waterUniformsUnder.watercolor, settings.fog.color[0], settings.fog.color[1], settings.fog.color[2]);
 			m_waterShaderUnder.SetUniform1f(m_waterUniformsUnder.time, flTime);
+			m_waterShaderUnder.SetUniform1f(m_waterUniformsUnder.waveheight, settings.waveheight);
+			m_waterShaderUnder.SetUniform1f(m_waterUniformsUnder.wavefreq, settings.wavefreq);
+			m_waterShaderUnder.SetUniform1f(m_waterUniformsUnder.wavespeed, settings.wavespeed);
 		}
 
 		gBSPRenderer.Bind2DTexture(GL_TEXTURE0_ARB, m_pNormalTexture->iIndex);
