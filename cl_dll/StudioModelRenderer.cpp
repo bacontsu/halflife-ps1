@@ -235,6 +235,9 @@ void CStudioModelRenderer::VidInit()
 {
 	StoredLightBuffer.clear();
 
+	m_vectorStudioDecals.clear();
+	m_mapEntityStudioDecals.clear();
+
 	int iCurrentBinding;
 	glGetIntegerv(GL_TEXTURE_BINDING_2D, &iCurrentBinding);
 
@@ -4030,10 +4033,7 @@ void CStudioModelRenderer::StudioDecalTriangle(studiotri_t* tri, Vector position
 			indexes[i] = tri->verts[0].boneindex;
 	}
 
-	if (decal.polys.empty())
-		return;
-
-	StudioDecalPoly& polygon = decal.polys.back();
+	StudioDecalPoly& polygon = decal.polys.emplace_back();
 	polygon.resize(nv);
 	for (size_t i = 0; i < polygon.size(); i++)
 	{
@@ -4060,11 +4060,11 @@ void CStudioModelRenderer::StudioDecalTriangle(studiotri_t* tri, Vector position
 
 		if (j == decal.verts.size())
 		{
-			decal.verts.back().boneindex = indexes[i];
-			decal.verts.back().position = fpos;
-
 			polygon[i].vertindex = decal.verts.size();
-			decal.verts.resize(decal.verts.size() + 1);
+
+			StudioDecalVertInfo& vert = decal.verts.emplace_back();
+			vert.boneindex = indexes[i];
+			vert.position = fpos;
 		}
 	}
 }
@@ -4179,8 +4179,9 @@ void CStudioModelRenderer::StudioDrawDecals()
 	if (m_pCvarModelDecals->value < 1)
 		return;
 
-	//if (m_pCurrentEntity->efrag == nullptr)
-	//	return;
+	const auto entDecalsIt = m_mapEntityStudioDecals.find(m_pCurrentEntity);
+	if (entDecalsIt == m_mapEntityStudioDecals.end() || entDecalsIt->second.empty())
+		return;
 
 	if (gHUD.m_pFogSettings.active && (m_pCvarModelShaders->value != 0.0f) && gBSPRenderer.m_bShaderSupport)
 	{
@@ -4208,9 +4209,7 @@ void CStudioModelRenderer::StudioDrawDecals()
 	gBSPRenderer.glActiveTextureARB(GL_TEXTURE0_ARB);
 	glEnable(GL_TEXTURE_2D);
 
-	StudioDecal* pnext = (StudioDecal*)m_pCurrentEntity->efrag;
-
-	const auto& entDecals = m_mapEntityStudioDecals[m_pCurrentEntity];
+	const auto& entDecals = entDecalsIt->second;
 	DecalTexture* decalTexPtr = nullptr;
 	for (size_t i = 0; i < entDecals.size(); i++)
 	{
@@ -4456,7 +4455,7 @@ void CStudioModelRenderer::StudioDecalExternal(Vector vpos, Vector vnorm, const 
 					//polygon->verts = new StudioDecalVert[nv];
 					//polygon->numverts = nv;
 
-					StudioDecalPoly& polygon = decal.polys.back();
+					StudioDecalPoly& polygon = decal.polys.emplace_back();
 					polygon.resize(nv);
 
 					for (size_t m = 0; m < polygon.size(); m++)
@@ -4478,11 +4477,11 @@ void CStudioModelRenderer::StudioDecalExternal(Vector vpos, Vector vnorm, const 
 
 						if (n == decal.verts.size())
 						{
-							decal.verts.back().boneindex = NULL;
-							decal.verts.back().position = dverts1[m];
+							polygon[m].vertindex = decal.verts.size();
 
-							polygon[i].vertindex = decal.verts.size();
-							decal.verts.resize(decal.verts.size() + 1);
+							StudioDecalVertInfo& vert = decal.verts.emplace_back();
+							vert.boneindex = 0;
+							vert.position = dverts1[m];
 						}
 					}
 				}
