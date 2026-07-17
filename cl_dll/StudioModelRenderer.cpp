@@ -4012,25 +4012,33 @@ void CStudioModelRenderer::StudioDecalTriangle(studiotri_t* tri, Vector position
 	if (nv < 3)
 		return;
 
-	// Only allow cut polys if the poly is only transformed by one bone
-	if (nv > 3 && (tri->verts[0].boneindex != tri->verts[1].boneindex || tri->verts[0].boneindex != tri->verts[2].boneindex || tri->verts[1].boneindex != tri->verts[2].boneindex))
-		return;
-
-	// Check if the poly was cut
-	if ((dverts1[0] != m_vVertexTransform[tri->verts[2].vertindex] || dverts1[1] != m_vVertexTransform[tri->verts[0].vertindex] || dverts1[2] != m_vVertexTransform[tri->verts[1].vertindex]) && (tri->verts[0].boneindex != tri->verts[1].boneindex || tri->verts[0].boneindex != tri->verts[2].boneindex || tri->verts[1].boneindex != tri->verts[2].boneindex))
-		return;
+	bool bCut = (nv != 3 || dverts1[0] != m_vVertexTransform[tri->verts[0].vertindex] || dverts1[1] != m_vVertexTransform[tri->verts[1].vertindex] || dverts1[2] != m_vVertexTransform[tri->verts[2].vertindex]);
 
 	byte indexes[10];
-	if (nv == 3 && dverts1[0] == m_vVertexTransform[tri->verts[2].vertindex] && dverts1[1] == m_vVertexTransform[tri->verts[0].vertindex] && dverts1[2] == m_vVertexTransform[tri->verts[1].vertindex])
+	if (!bCut)
 	{
-		indexes[0] = tri->verts[2].boneindex;
-		indexes[1] = tri->verts[0].boneindex;
-		indexes[2] = tri->verts[1].boneindex;
+		for (int i = 0; i < 3; i++)
+			indexes[i] = tri->verts[i].boneindex;
 	}
 	else
 	{
+		// Clipped verts don't map back to an original vertex.
+		// So, we borrow the bone of the closest one.
 		for (int i = 0; i < nv; i++)
-			indexes[i] = tri->verts[0].boneindex;
+		{
+			int nearest = 0;
+			float bestdist = (dverts1[i] - m_vVertexTransform[tri->verts[0].vertindex]).Length();
+			for (int j = 1; j < 3; j++)
+			{
+				float dist = (dverts1[i] - m_vVertexTransform[tri->verts[j].vertindex]).Length();
+				if (dist < bestdist)
+				{
+					bestdist = dist;
+					nearest = j;
+				}
+			}
+			indexes[i] = tri->verts[nearest].boneindex;
+		}
 	}
 
 	StudioDecalPoly& polygon = decal.polys.emplace_back();
