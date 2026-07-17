@@ -101,11 +101,11 @@ void CParticleEngine::VidInit()
 				pparticle = pfreeparticle->next;
 
 				m_iNumFreedParticles++;
-				delete[] pfreeparticle;
+				delete pfreeparticle;
 			}
 
 			m_iNumFreedSystems++;
-			delete[] pfree;
+			delete pfree;
 		}
 
 		m_pSystemHeader = nullptr;
@@ -120,9 +120,8 @@ AllocSystem
 */
 particle_system_t* CParticleEngine::AllocSystem()
 {
-	// Allocate memory
-	particle_system_t* pSystem = new particle_system_t;
-	memset(pSystem, 0, sizeof(particle_system_t));
+	// Allocate memory.
+	particle_system_t* pSystem = new particle_system_t();
 
 	// Add system into pointer array
 	if (m_pSystemHeader != nullptr)
@@ -145,8 +144,7 @@ AllocParticle
 cl_particle_t* CParticleEngine::AllocParticle(particle_system_t* pSystem)
 {
 	// Allocate memory
-	cl_particle_t* pParticle = new cl_particle_t;
-	memset(pParticle, 0, sizeof(cl_particle_t));
+	cl_particle_t* pParticle = new cl_particle_t();
 
 	// Add system into pointer array
 	if (pSystem->particleheader != nullptr)
@@ -335,11 +333,11 @@ particle_system_t* CParticleEngine::CreateSystem(const std::string& path, Vector
 	if (outputData.contains("overbright"))
 		pSystem->overbright = std::stoi(outputData.at("overbright"));
 	if (outputData.contains("create"))
-		std::strcpy(pSystem->create, outputData.at("create").c_str());
+		pSystem->create = outputData.at("create");
 	if (outputData.contains("deathcreate"))
-		std::strcpy(pSystem->deathcreate,outputData.at("deathcreate").c_str());
+		pSystem->deathcreate = outputData.at("deathcreate");
 	if (outputData.contains("watercreate"))
-		std::strcpy(pSystem->watercreate, outputData.at("watercreate").c_str());
+		pSystem->watercreate = outputData.at("watercreate");
 	if (outputData.contains("windx"))
 		pSystem->windx = std::stof(outputData.at("windx"));
 	if (outputData.contains("windy"))
@@ -384,7 +382,7 @@ particle_system_t* CParticleEngine::CreateSystem(const std::string& path, Vector
 			// Remove system
 			m_pSystemHeader = pSystem->next;
 			m_pSystemHeader->prev = nullptr;
-			delete[] pSystem;
+			delete pSystem;
 
 			return nullptr;
 		}
@@ -439,7 +437,7 @@ particle_system_t* CParticleEngine::CreateSystem(const std::string& path, Vector
 			// Remove system
 			m_pSystemHeader = pSystem->next;
 			m_pSystemHeader->prev = nullptr;
-			delete[] pSystem;
+			delete pSystem;
 
 			return nullptr;
 		}
@@ -449,18 +447,18 @@ particle_system_t* CParticleEngine::CreateSystem(const std::string& path, Vector
 
 	if (pSystem->collision != PARTICLE_COLLISION_DECAL)
 	{
-		if (pSystem->create[0] != 0)
+		if (!pSystem->create.empty())
 			pSystem->createsystem = CreateSystem(pSystem->create, pSystem->origin, pSystem->dir, 0, pSystem);
 
 		if (pSystem->createsystem == nullptr)
-			memset(pSystem->create, 0, sizeof(pSystem->create));
+			pSystem->create.clear();
 	}
 
-	if (pSystem->watercreate[0] != 0)
+	if (!pSystem->watercreate.empty())
 		pSystem->watersystem = CreateSystem(pSystem->watercreate, pSystem->origin, pSystem->dir, 0, pSystem);
 
 	if (pSystem->watersystem == nullptr)
-		memset(pSystem->watercreate, 0, sizeof(pSystem->watercreate));
+		pSystem->watercreate.clear();
 
 	if (parent != nullptr)
 	{
@@ -839,7 +837,7 @@ void CParticleEngine::Update()
 				}
 
 				m_iNumFreedParticles++;
-				delete[] pfree;
+				delete pfree;
 				continue;
 			}
 			cl_particle_t* pnext = pparticle->next;
@@ -912,7 +910,7 @@ void CParticleEngine::UpdateSystems()
 
 		// Delete from memory
 		m_iNumFreedSystems++;
-		delete[] pfree;
+		delete pfree;
 	}
 
 	// Update systems
@@ -1089,7 +1087,7 @@ bool CParticleEngine::UpdateParticle(cl_particle_t* pParticle)
 	{
 		if (pParticle->life <= flTime)
 		{
-			if (pSystem->deathcreate[0] != 0)
+			if (!pSystem->deathcreate.empty())
 				CreateSystem(pSystem->deathcreate, pParticle->origin, pParticle->velocity.Normalize(), 0);
 
 			return false; // remove
@@ -1253,17 +1251,17 @@ bool CParticleEngine::UpdateParticle(cl_particle_t* pParticle)
 			}
 			else if (pSystem->collision == PARTICLE_COLLISION_NEW_SYSTEM)
 			{
-				if (bColWater && pSystem->watercreate[0] != 0)
+				if (bColWater && !pSystem->watercreate.empty())
 				{
 					for (int i = 0; i < pSystem->watersystem->startparticles; i++)
 						CreateParticle(pSystem->watersystem, pmtrace.endpos, pmtrace.plane.normal);
 				}
-				if (pSystem->deathcreate[0] != 0)
+				if (!pSystem->deathcreate.empty())
 				{
 					// gEngfuncs.Con_Printf("CALLED!\n");
 					CreateSystem(pSystem->deathcreate, pParticle->origin, pParticle->velocity.Normalize(), 0);
 				}
-				if (gEngfuncs.PM_PointContents(pmtrace.endpos, nullptr) != CONTENTS_SKY && pSystem->create[0] != 0)
+				if (gEngfuncs.PM_PointContents(pmtrace.endpos, nullptr) != CONTENTS_SKY && !pSystem->create.empty())
 				{
 					for (int i = 0; i < pSystem->createsystem->startparticles; i++)
 						CreateParticle(pSystem->createsystem, pmtrace.endpos, pmtrace.plane.normal);
@@ -1800,7 +1798,7 @@ void CParticleEngine::RemoveSystem(int iId)
 			pparticle = pfree->next;
 
 			m_iNumFreedParticles++;
-			delete[] pfree;
+			delete pfree;
 		}
 
 		// Unlink this
@@ -1825,7 +1823,7 @@ void CParticleEngine::RemoveSystem(int iId)
 		}
 
 		m_iNumFreedSystems++;
-		delete[] psystem;
+		delete psystem;
 		break;
 	}
 }

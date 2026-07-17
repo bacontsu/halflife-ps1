@@ -843,20 +843,6 @@ void R_MarkLeaves(mleaf_t* pLeaf)
 	}
 }
 
-byte* ResizeArray(byte* pOriginal, int iSize, int iCount)
-{
-	byte* pArray = new byte[iSize * (iCount + 1)];
-	memset(pArray, 0, sizeof(byte) * iSize * (iCount + 1));
-
-	if ((pOriginal != nullptr) && (iCount != 0))
-	{
-		memmove(pArray, pOriginal, iSize * iCount);
-		delete[] pOriginal;
-	}
-
-	return pArray;
-}
-
 /*
 =================
 HUD_PrintSpeeds
@@ -988,7 +974,7 @@ void RenderersDumpInfo()
 	gEngfuncs.Con_Printf("Engine Data Dump:\n");
 	gEngfuncs.Con_Printf("Number of models in client cache: %i of 4096 max.\n", g_StudioRenderer.m_iNumStudioModels);
 	gEngfuncs.Con_Printf("Number of models in engine cache: %i of 512 max.\n", g_StudioRenderer.m_iNumEngineCacheModels);
-	gEngfuncs.Con_Printf("Number of tga textures cached: %i on client.\n", gTextureLoader.m_iNumTextures);
+	gEngfuncs.Con_Printf("Number of tga textures cached: %zu on client.\n", gTextureLoader.m_dequeTextures.size());
 	gEngfuncs.Con_Printf("Number of lightmaps: %i of 64 max.\n", gBSPRenderer.m_iNumLightmaps);
 	gEngfuncs.Con_Printf("Number of surfaces: %i.\n", gBSPRenderer.m_iTotalFaceCount);
 	gEngfuncs.Con_Printf("Number of triangles: %i.\n", gBSPRenderer.m_iTotalTriCount);
@@ -1161,13 +1147,12 @@ void GenDetail()
 	gEngfuncs.COM_FreeFile(pFile);
 	fclose(fout);
 
-	char* pPrevious = nullptr;
+	std::string strPrevious;
 	char* pPrevFile = (char*)gEngfuncs.COM_LoadFile("detail_failures.txt", 5, nullptr);
 
 	if (pPrevFile != nullptr)
 	{
-		pPrevious = new char[strlen(pPrevFile)];
-		memcpy(pPrevious, pPrevFile, sizeof(char) * strlen(pPrevFile));
+		strPrevious = pPrevFile;
 		gEngfuncs.COM_FreeFile(pPrevFile);
 	}
 
@@ -1175,11 +1160,8 @@ void GenDetail()
 	strcat(szPathOut, "/detail_failures.txt");
 	FILE* fList = fopen(szPathOut, "w");
 
-	if (pPrevious != nullptr)
-	{
-		fprintf(fList, "%s", pPrevious);
-		delete[] pPrevious;
-	}
+	if (!strPrevious.empty())
+		fprintf(fList, "%s", strPrevious.c_str());
 
 	// Print out world name
 	fprintf(fList, "--------------%s\n", pWorld->name);

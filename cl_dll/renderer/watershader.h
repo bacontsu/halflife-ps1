@@ -29,6 +29,8 @@ Written by Andrew Lucas
 #include "rendererdefs.h"
 #include "glslshader.h"
 
+#include <deque>
+
 // Uniforms of the water shaders
 struct glsl_water_uniforms_t
 {
@@ -79,8 +81,9 @@ public:
 	bool m_bViewInWater;
 	Vector m_vViewOrigin;
 
-	cl_water_t m_pWaterEntities[MAX_WATER_ENTITIES];
-	int m_iNumWaterEntities;
+	// Deque instead of vector.
+	// Water entities are referenced by pointer through cl_entity_t::efrag, so growing must not relocate them.
+	std::deque<cl_water_t> m_dequeWaterEntities;
 
 	cvar_t* m_pCvarWaterShader;
 	cvar_t* m_pCvarWaterDebug;

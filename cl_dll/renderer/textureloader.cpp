@@ -44,22 +44,14 @@ VidInit
 */
 void CTextureLoader::VidInit()
 {
-	if (m_iNumTextures == 0)
-		return;
-
-	for (int i = 0; i < m_iNumTextures; i++)
+	for (cl_texture_t& texture : m_dequeTextures)
 	{
 		// Only delete texture ids we actually own.
-		if (m_pTextures[i].iIndex >= BASE_EXT_TEXTURE_ID)
-			glDeleteTextures(1, &m_pTextures[i].iIndex);
-
-		// Reset properly.
-		// cl_texture_t holds a std::string (strName).
-		// Memset would corrupt it and leak its buffer.
-		m_pTextures[i] = cl_texture_t{};
+		if (texture.iIndex >= BASE_EXT_TEXTURE_ID)
+			glDeleteTextures(1, &texture.iIndex);
 	}
 
-	m_iNumTextures = NULL;
+	m_dequeTextures.clear();
 }
 
 /*
@@ -107,22 +99,14 @@ LoadTexture
 */
 cl_texture_t* CTextureLoader::LoadTexture(const std::string& strFile, int iAltIndex, bool bPrompt, bool bNoMip, bool bBorder)
 {
-	int iType = 0;
-	char szAlt[64];
-	byte* pFile = nullptr;
-	const char* szFile = strFile.c_str(); //TODO: Properly convert to C++ string
-
-	if (strlen(szFile) >= 64)
-	{
-		gEngfuncs.Con_Printf("Token too large on %s.\n", szFile);
+	if (strFile.size() < 4)
 		return nullptr;
-	}
 
 	// Try and find a match
 	cl_texture_t* pTexture = nullptr;
 
 	if (iAltIndex == 0)
-		pTexture = HasTexture(szFile);
+		pTexture = HasTexture(strFile);
 
 	if (pTexture != nullptr)
 	{
@@ -130,34 +114,35 @@ cl_texture_t* CTextureLoader::LoadTexture(const std::string& strFile, int iAltIn
 		return pTexture;
 	}
 
+	int iType = 0;
+	byte* pFile = nullptr;
+
 	// Some files need to be .tga
-	if (strcmp(&szFile[strlen(szFile) - 3], "dds") == 0)
-		pFile = (byte*)gEngfuncs.COM_LoadFile(szFile, 5, nullptr);
+	if (strFile.ends_with("dds"))
+		pFile = (byte*)gEngfuncs.COM_LoadFile(strFile.c_str(), 5, nullptr);
 
 	if (pFile == nullptr)
 	{
 		// Check for .tga then
-		strcpy(szAlt, szFile);
-		strcpy(&szAlt[strlen(szAlt) - 3], "tga");
+		std::string strAlt = strFile.substr(0, strFile.size() - 3) + "tga";
 
-		pFile = (byte*)gEngfuncs.COM_LoadFile(szAlt, 5, nullptr);
+		pFile = (byte*)gEngfuncs.COM_LoadFile(strAlt.c_str(), 5, nullptr);
 		iType = 1;
 	}
 
 	if (pFile == nullptr)
 	{
 		if (bPrompt)
-			gEngfuncs.Con_Printf("Failed to load image: %s\n", szFile);
+			gEngfuncs.Con_Printf("Failed to load image: %s\n", strFile.c_str());
 		else
-			gEngfuncs.Con_DPrintf("Failed to load image: %s\n", szFile);
+			gEngfuncs.Con_DPrintf("Failed to load image: %s\n", strFile.c_str());
 		return nullptr;
 	}
 
 	//
 	// Allocate cache
 	//
-	pTexture = &m_pTextures[m_iNumTextures];
-	m_iNumTextures++;
+	pTexture = &m_dequeTextures.emplace_back();
 
 	if (iAltIndex == 0)
 	{
@@ -169,18 +154,17 @@ cl_texture_t* CTextureLoader::LoadTexture(const std::string& strFile, int iAltIn
 		pTexture->iIndex = iAltIndex;
 	}
 
-	pTexture->strName = szFile;
+	pTexture->strName = strFile;
 
 	// Load DDS file
 	if (iType == 0)
 	{
 		if (!LoadDDSFile(pFile, pTexture, bNoMip))
 		{
-			gEngfuncs.Con_Printf("Error! Failed to load: %s.\n", szFile);
+			gEngfuncs.Con_Printf("Error! Failed to load: %s.\n", strFile.c_str());
 			gEngfuncs.COM_FreeFile(pFile);
 
-			*pTexture = cl_texture_t{}; // reset (contains std::string, do not memset)
-			m_iNumTextures--;
+			m_dequeTextures.pop_back();
 			return nullptr;
 		}
 	}
@@ -188,11 +172,10 @@ cl_texture_t* CTextureLoader::LoadTexture(const std::string& strFile, int iAltIn
 	{
 		if (!LoadTGAFile(pFile, pTexture, bNoMip, bBorder))
 		{
-			gEngfuncs.Con_Printf("Error! Failed to load: %s.\n", szFile);
+			gEngfuncs.Con_Printf("Error! Failed to load: %s.\n", strFile.c_str());
 			gEngfuncs.COM_FreeFile(pFile);
 
-			*pTexture = cl_texture_t{}; // reset (contains std::string, do not memset)
-			m_iNumTextures--;
+			m_dequeTextures.pop_back();
 			return nullptr;
 		}
 	}
@@ -231,8 +214,8 @@ bool CTextureLoader::LoadTGAFile(byte* pFile, cl_texture_t* pTexture, bool bNoMi
 	int iSize = pTexture->iWidth * pTexture->iHeight;
 	int iImageSize = iSize * pTexture->iBpp;
 
-	byte* pOriginal = new byte[iImageSize];
-	memset(pOriginal, 0, sizeof(byte) * iImageSize);
+	std::vector<byte> originalData(iImageSize, 0);
+	byte* pOriginal = originalData.data();
 
 	// Load based on type
 	byte* pCurrent = pFile + 18;
@@ -332,7 +315,8 @@ bool CTextureLoader::LoadTGAFile(byte* pFile, cl_texture_t* pTexture, bool bNoMi
 	}
 
 	// Flip vertically
-	byte* pFlipped = new byte[iImageSize];
+	std::vector<byte> flippedData(iImageSize);
+	byte* pFlipped = flippedData.data();
 	for (int i = 0; i < pTexture->iHeight; i++)
 	{
 		GLubyte* dst = pFlipped + i * pTexture->iWidth * pTexture->iBpp;
@@ -386,8 +370,6 @@ bool CTextureLoader::LoadTGAFile(byte* pFile, cl_texture_t* pTexture, bool bNoMi
 	else
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, pTexture->iWidth, pTexture->iHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, pFlipped);
 
-	delete[] pOriginal;
-	delete[] pFlipped;
 	return true;
 }
 
@@ -438,8 +420,7 @@ bool CTextureLoader::LoadDDSFile(byte* pFile, cl_texture_t* pTexture, bool bNoMi
 	}
 
 	// Copy data over
-	byte* pData = new byte[iLinSize];
-	memcpy(pData, (pFile + 128), iLinSize);
+	std::vector<byte> textureData(pFile + 128, pFile + 128 + iLinSize);
 
 	glBindTexture(GL_TEXTURE_2D, pTexture->iIndex);
 	if (bNoMip)
@@ -459,9 +440,8 @@ bool CTextureLoader::LoadDDSFile(byte* pFile, cl_texture_t* pTexture, bool bNoMi
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
 	// Upload to OpenGL
-	glCompressedTexImage2DARB(GL_TEXTURE_2D, 0, (iFourCC == D3DFMT_DXT1) ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, pTexture->iWidth, pTexture->iHeight, 0, iLinSize, pData);
+	glCompressedTexImage2DARB(GL_TEXTURE_2D, 0, (iFourCC == D3DFMT_DXT1) ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, pTexture->iWidth, pTexture->iHeight, 0, iLinSize, textureData.data());
 
-	delete[] pData;
 	return true;
 }
 
@@ -473,10 +453,10 @@ HasTexture
 */
 cl_texture_t* CTextureLoader::HasTexture(const std::string& strFile)
 {
-	for (int i = 0; i < m_iNumTextures; i++)
+	for (cl_texture_t& texture : m_dequeTextures)
 	{
-		if (strFile == m_pTextures[i].strName)
-			return &m_pTextures[i];
+		if (strFile == texture.strName)
+			return &texture;
 	}
 	return nullptr;
 }
@@ -512,14 +492,12 @@ void CTextureLoader::LoadWADFiles()
 			continue;
 		}
 
-		wadfile_t& pWADFile = m_pWADFiles[m_iNumWADFiles++];
-		pWADFile.wadfile = pFile;
-		pWADFile.info = reinterpret_cast<wadinfo_t*>(pWADFile.wadfile);
+		wadfile_t& wadFile = m_vectorWADFiles.emplace_back();
+		wadFile.wadfile = pFile;
+		wadFile.info = reinterpret_cast<wadinfo_t*>(wadFile.wadfile);
 
-		pWADFile.lumps = new lumpinfo_t[pWADFile.info->numlumps];
-		std::memcpy(pWADFile.lumps, reinterpret_cast<byte*>(pWADFile.wadfile) + pWADFile.info->infotableofs,
-			sizeof(lumpinfo_t) * pWADFile.info->numlumps);
-		pWADFile.numlumps = pWADFile.info->numlumps;
+		const lumpinfo_t* pLumpTable = reinterpret_cast<const lumpinfo_t*>(wadFile.wadfile + wadFile.info->infotableofs);
+		wadFile.lumps.assign(pLumpTable, pLumpTable + wadFile.info->numlumps);
 	}
 }
 
@@ -531,17 +509,10 @@ FreeWADFiles
 */
 void CTextureLoader::FreeWADFiles()
 {
-	if (m_iNumWADFiles == 0)
-		return;
+	for (wadfile_t& wadFile : m_vectorWADFiles)
+		gEngfuncs.COM_FreeFile(wadFile.wadfile);
 
-	for (int i = 0; i < m_iNumWADFiles; i++)
-	{
-		delete[] m_pWADFiles[i].lumps;
-		gEngfuncs.COM_FreeFile(m_pWADFiles[i].wadfile);
-	}
-
-	memset(m_pWADFiles, 0, sizeof(m_pWADFiles));
-	m_iNumWADFiles = 0;
+	m_vectorWADFiles.clear();
 }
 
 /*
@@ -553,45 +524,41 @@ LoadWADTexture
 cl_texture_t* CTextureLoader::LoadWADTexture(const std::string& strTexture, int iAltIndex)
 {
 	std::string strName;
-	cl_texture_t* pTexture = nullptr;
 
-	for (int i = 0; i < m_iNumWADFiles; i++)
+	for (wadfile_t& wadFile : m_vectorWADFiles)
 	{
-		byte* pFile = m_pWADFiles[i].wadfile;
-		wadinfo_t* pInfo = m_pWADFiles[i].info;
-		for (int j = 0; j < pInfo->numlumps; j++)
+		byte* pFile = wadFile.wadfile;
+		for (lumpinfo_t& lump : wadFile.lumps)
 		{
-			lumpinfo_t* pLump = &m_pWADFiles[i].lumps[j];
-			if (pLump->type != 0 && ((pLump->type & 0x43) == 0))
+			if (lump.type != 0 && ((lump.type & 0x43) == 0))
 				continue;
 
-			strName = std::string(pLump->name);
+			strName = std::string(lump.name);
 			FranUtils::StringUtils::LowerCase_Ref(strName);
 
 			if (strName == strTexture)
 			{
-				pTexture = &m_pTextures[m_iNumTextures];
-				m_iNumTextures++;
+				cl_texture_t* pTexture = &m_dequeTextures.emplace_back();
 
 				// Fill in data
 				pTexture->strName = strTexture;
-				pTexture->iWidth = ByteToUInt(pFile + pLump->filepos + 16);
-				pTexture->iHeight = ByteToUInt(pFile + pLump->filepos + 20);
+				pTexture->iWidth = ByteToUInt(pFile + lump.filepos + 16);
+				pTexture->iHeight = ByteToUInt(pFile + lump.filepos + 20);
 				pTexture->iBpp = 4;
 
 				// Get offsets
-				int iIndexOffset = ByteToUInt(pFile + pLump->filepos + 24);
-				int iMip3Offset = ByteToUInt(pFile + pLump->filepos + 36);
+				int iIndexOffset = ByteToUInt(pFile + lump.filepos + 24);
+				int iMip3Offset = ByteToUInt(pFile + lump.filepos + 36);
 
 				byte* pPalette;
-				if ((pLump->type & 0x43) != 0)
-					pPalette = pFile + pLump->filepos + iMip3Offset + ((pTexture->iWidth / 8) * (pTexture->iHeight / 8)) + 2;
+				if ((lump.type & 0x43) != 0)
+					pPalette = pFile + lump.filepos + iMip3Offset + ((pTexture->iWidth / 8) * (pTexture->iHeight / 8)) + 2;
 				else
-					pPalette = pFile + pLump->filepos + iIndexOffset + (pTexture->iWidth * pTexture->iHeight) + 2;
+					pPalette = pFile + lump.filepos + iIndexOffset + (pTexture->iWidth * pTexture->iHeight) + 2;
 
 				if (iAltIndex != 0)
 					pTexture->iIndex = iAltIndex;
-				byte* pPixels = pFile + pLump->filepos + iIndexOffset;
+				byte* pPixels = pFile + lump.filepos + iIndexOffset;
 				LoadPallettedTexture(pPixels, pPalette, pTexture);
 				return pTexture;
 			}
@@ -627,8 +594,8 @@ void CTextureLoader::LoadPallettedTexture(byte* data, byte* pal, cl_texture_t* p
 	if (outheight > 1024)
 		outheight = 1024;
 
-	byte *out, *tex;
-	tex = out = new byte[outwidth * outheight * 4];
+	std::vector<byte> outData(outwidth * outheight * 4);
+	byte* out = outData.data();
 
 	for (int i = 0; i < outwidth; i++)
 	{
@@ -709,9 +676,7 @@ void CTextureLoader::LoadPallettedTexture(byte* data, byte* pal, cl_texture_t* p
 	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, outwidth, outheight, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex);
-
-	delete[] tex;
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, outwidth, outheight, 0, GL_RGBA, GL_UNSIGNED_BYTE, outData.data());
 }
 
 /*
@@ -722,9 +687,7 @@ LoadTextureScript
 */
 void CTextureLoader::LoadTextureScript()
 {
-	for (int i = 0; i < m_iNumTextureEntries; i++)
-		m_pTextureEntries[i] = texentry_t{};
-	m_iNumTextureEntries = 0;
+	m_vectorTextureEntries.clear();
 
 	std::ifstream inputStream{};
 	std::stringstream strStream{};
@@ -770,14 +733,12 @@ void CTextureLoader::LoadTextureScript()
 				break; // Invalid flag
 		}
 
-		// TODO: Implement overflow protection
-
-		if (iFlags != 0 /* && m_iNumTextureEntries < MAX_TEXTURE_ENTRIES */)
+		if (iFlags != 0)
 		{
-			texentry_t* pEntry = &m_pTextureEntries[m_iNumTextureEntries++];
-			pEntry->strModel = strModel;
-			pEntry->strTexture = strTexture;
-			pEntry->iFlags = iFlags;
+			texentry_t& entry = m_vectorTextureEntries.emplace_back();
+			entry.strModel = strModel;
+			entry.strTexture = strTexture;
+			entry.iFlags = iFlags;
 		}
 	}
 }
@@ -790,12 +751,9 @@ TextureHasFlag
 */
 bool CTextureLoader::TextureHasFlag(const std::string& model, const std::string& texture, int flag) const
 {
-	if (m_iNumTextureEntries == 0)
-		return false;
-
-	for (int i = 0; i < m_iNumTextureEntries; i++)
+	for (const texentry_t& entry : m_vectorTextureEntries)
 	{
-		if ((m_pTextureEntries[i].strModel == model) && (m_pTextureEntries[i].strTexture == texture) && ((m_pTextureEntries[i].iFlags & flag) != 0))
+		if ((entry.strModel == model) && (entry.strTexture == texture) && ((entry.iFlags & flag) != 0))
 		{
 			return true;
 		}
@@ -810,11 +768,11 @@ WriteTGA
 
 ====================
 */
-void CTextureLoader::WriteTGA(byte* pixels, int bpp, int width, int height, char* szpath)
+void CTextureLoader::WriteTGA(byte* pixels, int bpp, int width, int height, const std::string& strPath)
 {
 	int iSize = width * height * bpp;
-	byte* pBuf = new byte[(iSize + 18)];
-	memset(pBuf, 0, sizeof(byte) * (iSize + 18));
+	std::vector<byte> fileData(iSize + 18, 0);
+	byte* pBuf = fileData.data();
 
 	tga_header_t* pHeader = (tga_header_t*)pBuf;
 	pHeader->datatypecode = 2;
@@ -851,19 +809,11 @@ void CTextureLoader::WriteTGA(byte* pixels, int bpp, int width, int height, char
 		}
 	}
 
-	char szPath[64];
-	sprintf(szPath, "%s/imagedump/%s.tga", gEngfuncs.pfnGetGameDirectory(), szpath);
+	std::string strFullPath = std::string(gEngfuncs.pfnGetGameDirectory()) + "/imagedump/" + strPath + ".tga";
 
-	FILE* pFile = fopen(szPath, "wb");
-	if (pFile == nullptr)
-	{
-		delete[] pBuf;
+	std::ofstream outputStream(strFullPath, std::ios::binary);
+	if (!outputStream)
 		return;
-	}
 
-	fwrite(pBuf, sizeof(byte), (iSize + 18), pFile);
-	fclose(pFile);
-
-	// Free memory
-	delete[] pBuf;
+	outputStream.write(reinterpret_cast<const char*>(fileData.data()), fileData.size());
 }

@@ -45,12 +45,6 @@ constexpr int MAXRENDERENTS = 4096;
 #endif
 
 //==============================
-//		TEXTURE LOADER DEFS
-//
-//==============================
-constexpr int MAX_TGA_LOADER_TEXTURES = 8192;
-
-//==============================
 //		TEXTURE LOADER STRUCTS
 //
 //==============================
@@ -190,10 +184,9 @@ struct particle_system_t
 	int framesizey;
 	int framerate;
 
-	// TODO: Convert to std::string
-	char create[64];
-	char deathcreate[64];
-	char watercreate[64];
+	std::string create;
+	std::string deathcreate;
+	std::string watercreate;
 
 	particle_system_t* createsystem;
 	particle_system_t* watersystem;
@@ -206,8 +199,6 @@ struct particle_system_t
 	particle_system_t* prev;
 
 	struct cl_particle_t* particleheader;
-
-	byte pad[14];
 };
 
 struct cl_particle_t
@@ -251,8 +242,6 @@ struct cl_particle_t
 
 	cl_particle_t* next;
 	cl_particle_t* prev;
-
-	byte pad[4];
 };
 
 //==============================
@@ -520,7 +509,6 @@ struct cl_dlight_t
 //				WATER SHADER DEFS
 //
 //==================================================
-constexpr int MAX_WATER_ENTITIES = 64;
 constexpr int WATER_RESOLUTION = 512;
 
 //==================================================
@@ -543,8 +531,9 @@ struct cl_water_t
 	GLuint reflect;
 	GLuint dbuffer;
 
-	msurface_t** surfaces;
-	int numsurfaces;
+	std::vector<msurface_t*> surfaces;
+
+	cl_water_t() : index(0), entity(nullptr), wplane{}, draw(false), refract(0), reflect(0), dbuffer(0) {}
 };
 
 //==================================================
@@ -852,8 +841,6 @@ extern void VectorRotate(const float* in1, const float in2[3][4], float* out);
 extern void VectorIRotate(const Vector& in1, const float in2[3][4], Vector& out);
 extern void FixVectorForSpotlight(Vector& vec);
 extern void SV_FindTouchedLeafs(entextradata_t* ent, mnode_t* node);
-
-extern byte* ResizeArray(byte* pOriginal, int iSize, int iCount);
 
 extern void R_DisableSteamMSAA();
 extern void R_SaveGLStates();

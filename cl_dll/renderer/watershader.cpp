@@ -194,18 +194,13 @@ ClearEntities
 */
 void CWaterShader::ClearEntities()
 {
-	if (m_iNumWaterEntities == 0)
-		return;
-
-	for (int i = 0; i < m_iNumWaterEntities; i++)
+	for (cl_water_t& water : m_dequeWaterEntities)
 	{
-		glDeleteTextures(1, &m_pWaterEntities[i].reflect);
-		glDeleteTextures(1, &m_pWaterEntities[i].refract);
-		free(m_pWaterEntities[i].surfaces);
+		glDeleteTextures(1, &water.reflect);
+		glDeleteTextures(1, &water.refract);
 	}
 
-	memset(m_pWaterEntities, NULL, sizeof(m_pWaterEntities));
-	m_iNumWaterEntities = NULL;
+	m_dequeWaterEntities.clear();
 }
 
 /*
@@ -258,7 +253,7 @@ void CWaterShader::Restore()
 	if (!gBSPRenderer.m_bShaderSupport)
 		return;
 
-	if (m_iNumWaterEntities == 0)
+	if (m_dequeWaterEntities.empty())
 		return;
 
 	if (!m_bViewInWater)
@@ -335,9 +330,9 @@ bool CWaterShader::ShouldReflect(int index)
 	// Optimization: Try and find a water entity on the same z coord
 	for (int i = 0; i < index; i++)
 	{
-		if (m_pWaterEntities[i].draw)
+		if (m_dequeWaterEntities[i].draw)
 		{
-			if (GetWaterOrigin(&m_pWaterEntities[i]).z == GetWaterOrigin().z)
+			if (GetWaterOrigin(&m_dequeWaterEntities[i]).z == GetWaterOrigin().z)
 				return false;
 		}
 	}
@@ -352,20 +347,15 @@ AddEntity
 */
 void CWaterShader::AddEntity(cl_entity_t* entity)
 {
-	if (m_iNumWaterEntities == MAX_WATER_ENTITIES)
-		return;
-
-	for (int i = 0; i < m_iNumWaterEntities; i++)
+	for (cl_water_t& water : m_dequeWaterEntities)
 	{
-		if (m_pWaterEntities[i].entity == entity)
+		if (water.entity == entity)
 			return; // Already in cache
 	}
 
-	cl_water_t* pWater = &m_pWaterEntities[m_iNumWaterEntities];
-	pWater->index = m_iNumWaterEntities;
-	m_iNumWaterEntities++;
+	cl_water_t* pWater = &m_dequeWaterEntities.emplace_back();
+	pWater->index = (int)m_dequeWaterEntities.size() - 1;
 
-	int isurfacecount = 0;
 	msurface_t* psurfaces = entity->model->surfaces + entity->model->firstmodelsurface;
 	for (int i = 0; i < entity->model->nummodelsurfaces; i++)
 	{
@@ -385,47 +375,21 @@ void CWaterShader::AddEntity(cl_entity_t* entity)
 		if (psurfaces[i].plane->normal[2] != 1)
 			continue;
 
-		isurfacecount++;
+		pWater->surfaces.push_back(&psurfaces[i]);
 	}
 
-	// Allocate array of pointers
-	pWater->surfaces = (msurface_t**)malloc(sizeof(msurface_t*) * isurfacecount);
-
-	for (int i = 0; i < entity->model->nummodelsurfaces; i++)
+	if (pWater->surfaces.empty())
 	{
-		int j = 0;
-		for (; j < psurfaces[i].polys->numverts; j++)
-		{
-			if (psurfaces[i].polys->verts[0][2] != (entity->curstate.maxs.z - 1))
-				break;
-		}
-
-		if (j != psurfaces[i].polys->numverts)
-			continue;
-
-		if ((psurfaces[i].flags & SURF_PLANEBACK) != 0)
-			continue;
-
-		if (psurfaces[i].plane->normal[2] != 1)
-			continue;
-
-		pWater->surfaces[pWater->numsurfaces] = &psurfaces[i];
-		pWater->numsurfaces++;
-	}
-
-	if (pWater->numsurfaces == 0)
-	{
-		memset(&m_pWaterEntities[m_iNumWaterEntities], 0, sizeof(cl_water_t));
-		m_iNumWaterEntities--;
+		m_dequeWaterEntities.pop_back();
 		return;
 	}
 
 	pWater->mins = Vector(9999, 9999, 9999);
 	pWater->maxs = Vector(-9999, -9999, -9999);
 
-	for (int i = 0; i < pWater->numsurfaces; i++)
+	for (msurface_t* pSurface : pWater->surfaces)
 	{
-		for (glpoly_t* bp = pWater->surfaces[i]->polys; bp != nullptr; bp = bp->next)
+		for (glpoly_t* bp = pSurface->polys; bp != nullptr; bp = bp->next)
 		{
 			for (int j = 0; j < bp->numverts; j++)
 			{
@@ -580,7 +544,7 @@ void CWaterShader::DrawWaterPasses(ref_params_t* pparams)
 	if (!gBSPRenderer.m_bShaderSupport)
 		return;
 
-	if (m_iNumWaterEntities == 0)
+	if (m_dequeWaterEntities.empty())
 		return;
 
 	// Completely clear everything
@@ -596,9 +560,9 @@ void CWaterShader::DrawWaterPasses(ref_params_t* pparams)
 	VectorCopy(pparams->vieworg, m_vViewOrigin);
 	memcpy(&m_pWaterParams, m_pViewParams, sizeof(ref_params_t));
 
-	for (int i = 0; i < m_iNumWaterEntities; i++)
+	for (int i = 0; i < (int)m_dequeWaterEntities.size(); i++)
 	{
-		m_pCurWater = &m_pWaterEntities[i];
+		m_pCurWater = &m_dequeWaterEntities[i];
 
 		if (!m_pCurWater->draw)
 			continue;
@@ -623,9 +587,9 @@ void CWaterShader::DrawWaterPasses(ref_params_t* pparams)
 		}
 	}
 
-	for (int i = 0; i < m_iNumWaterEntities; i++)
+	for (cl_water_t& water : m_dequeWaterEntities)
 	{
-		m_pCurWater = &m_pWaterEntities[i];
+		m_pCurWater = &water;
 
 		if (ViewInWater())
 		{
@@ -884,7 +848,7 @@ void CWaterShader::DrawWater()
 	if (!gBSPRenderer.m_bShaderSupport)
 		return;
 
-	if (m_iNumWaterEntities == 0)
+	if (m_dequeWaterEntities.empty())
 		return;
 
 	float flTime = gEngfuncs.GetClientTime();
@@ -894,11 +858,11 @@ void CWaterShader::DrawWater()
 	gBSPRenderer.EnableVertexArray();
 	gBSPRenderer.SetTexPointer(0, TC_TEXTURE);
 
-	for (int i = 0; i < m_iNumWaterEntities; i++)
+	for (int i = 0; i < (int)m_dequeWaterEntities.size(); i++)
 	{
-		m_pCurWater = &m_pWaterEntities[i];
+		m_pCurWater = &m_dequeWaterEntities[i];
 
-		if (!m_pWaterEntities[i].draw)
+		if (!m_pCurWater->draw)
 			continue;
 
 		if (gHUD.viewFrustum.CullBox(m_pCurWater->mins, m_pCurWater->maxs))
@@ -938,11 +902,11 @@ void CWaterShader::DrawWater()
 		int j = 0;
 		for (; j < i; j++)
 		{
-			if (m_pWaterEntities[j].draw)
+			if (m_dequeWaterEntities[j].draw)
 			{
-				if (GetWaterOrigin(&m_pWaterEntities[j]).z == GetWaterOrigin().z)
+				if (GetWaterOrigin(&m_dequeWaterEntities[j]).z == GetWaterOrigin().z)
 				{
-					gBSPRenderer.Bind2DTexture(GL_TEXTURE2_ARB, m_pWaterEntities[j].reflect);
+					gBSPRenderer.Bind2DTexture(GL_TEXTURE2_ARB, m_dequeWaterEntities[j].reflect);
 					break;
 				}
 			}
@@ -951,8 +915,8 @@ void CWaterShader::DrawWater()
 		if (j == i)
 			gBSPRenderer.Bind2DTexture(GL_TEXTURE2_ARB, m_pCurWater->reflect);
 
-		for (int j = 0; j < m_pCurWater->numsurfaces; j++)
-			gBSPRenderer.DrawPolyFromArray(gBSPRenderer.m_pWorld->surfaces, m_pCurWater->surfaces[j]);
+		for (msurface_t* pSurface : m_pCurWater->surfaces)
+			gBSPRenderer.DrawPolyFromArray(gBSPRenderer.m_pWorld->surfaces, pSurface);
 
 		glMatrixMode(GL_MODELVIEW);
 		glPopMatrix();

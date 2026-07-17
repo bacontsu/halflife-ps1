@@ -555,8 +555,8 @@ void CBSPRenderer::GetRenderEnts()
 	int iMsg = pPlayer->curstate.messagenum;
 
 	// Clear water shader class
-	for (int i = 0; i < gWaterShader.m_iNumWaterEntities; i++)
-		gWaterShader.m_pWaterEntities[i].draw = false;
+	for (cl_water_t& waterEnt : gWaterShader.m_dequeWaterEntities)
+		waterEnt.draw = false;
 
 	// Clear mirror class
 	for (int i = 0; i < gMirrorManager.m_iNumMirrors; i++)
@@ -1369,12 +1369,11 @@ void CBSPRenderer::CreateTextures()
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-	for (int i = 0; i < gTextureLoader.m_iNumTextureEntries; i++)
+	for (texentry_t& entry : gTextureLoader.m_vectorTextureEntries)
 	{
-		texentry_t* pEntry = &gTextureLoader.m_pTextureEntries[i];
-		if (pEntry->strModel == "flashlight")
+		if (entry.strModel == "flashlight")
 		{
-			cl_texture_t* pTexture = gTextureLoader.LoadTexture("gfx/textures/" + pEntry->strTexture + ".tga", FALSE, true, false, true);
+			cl_texture_t* pTexture = gTextureLoader.LoadTexture("gfx/textures/" + entry.strTexture + ".tga", FALSE, true, false, true);
 			if (pTexture != nullptr)
 			{
 				m_pFlashlightTextures[m_iNumFlashlightTextures] = pTexture;

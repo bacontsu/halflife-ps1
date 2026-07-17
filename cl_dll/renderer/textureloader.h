@@ -27,7 +27,8 @@ Written by Andrew Lucas
 #include "cvardef.h"
 #include "rendererdefs.h"
 
-constexpr int MAX_WADFILES = 12;
+#include <vector>
+#include <deque>
 
 constexpr int DDS_MAGIC = 0x20534444;
 
@@ -58,11 +59,12 @@ typedef struct
 
 struct wadfile_t
 {
-	byte* wadfile;
-	wadinfo_t* info;
+	byte* wadfile; // Engine-allocated file data, freed with COM_FreeFile
+	wadinfo_t* info; // Points into wadfile
 
-	lumpinfo_t* lumps;
-	int numlumps;
+	std::vector<lumpinfo_t> lumps;
+
+	wadfile_t() : wadfile(nullptr), info(nullptr) {}
 };
 
 struct tga_header_t
@@ -111,7 +113,7 @@ public:
 	void Shutdown();
 
 	bool IsPowerOfTwo(int iWidth, int iHeight);
-	void WriteTGA(byte* pixels, int bpp, int width, int height, char* szpath);
+	void WriteTGA(byte* pixels, int bpp, int width, int height, const std::string& strPath);
 
 	void LoadWADFiles();
 	void FreeWADFiles();
@@ -130,14 +132,14 @@ public:
 public:
 	PFNGLCOMPRESSEDTEXIMAGE2DARBPROC glCompressedTexImage2DARB;
 
-	cl_texture_t m_pTextures[MAX_TGA_LOADER_TEXTURES];
-	int m_iNumTextures;
+	// Deque instead of vector.
+	// Loaded textures are referenced by pointer all around
+	// the renderer, so growing must not relocate them.
+	std::deque<cl_texture_t> m_dequeTextures;
 
-	texentry_t m_pTextureEntries[MAX_CACHE_MODELS * 64];
-	int m_iNumTextureEntries;
+	std::vector<texentry_t> m_vectorTextureEntries;
 
-	wadfile_t m_pWADFiles[MAX_WADFILES];
-	int m_iNumWADFiles;
+	std::vector<wadfile_t> m_vectorWADFiles;
 };
 extern CTextureLoader gTextureLoader;
 #endif
