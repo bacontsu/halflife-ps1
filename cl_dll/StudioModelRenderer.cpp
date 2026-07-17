@@ -680,12 +680,16 @@ void CStudioModelRenderer::StudioSetUpTransform(int trivial_accept)
 		{
 			f = (m_clTime - m_pCurrentEntity->curstate.animtime) / (m_pCurrentEntity->curstate.animtime - m_pCurrentEntity->latched.prevanimtime);
 			// Con_DPrintf("%4.2f %.2f %.2f\n", f, m_pCurrentEntity->curstate.animtime, m_clTime);
-		}
 
-		if (m_fDoInterp != 0)
-		{
-			// ugly hack to interpolate angle, position. current is reached 0.1 seconds after being set
-			f = f - 1.0;
+			if (m_fDoInterp != 0)
+			{
+				// ugly hack to interpolate angle, position. current is reached 0.1 seconds after being set
+				f = f - 1.0;
+			}
+			else
+			{
+				f = 0;
+			}
 		}
 		else
 		{
@@ -1041,9 +1045,11 @@ void CStudioModelRenderer::StudioSetupBones()
 		}
 	}
 
+	const float flBlendTime = (m_pCurrentEntity == gEngfuncs.GetViewModel()) ? 0.1f : 0.2f;
+
 	if ((m_fDoInterp != 0) &&
 		(m_pCurrentEntity->latched.sequencetime != 0.0f) &&
-		(m_pCurrentEntity->latched.sequencetime + 0.01f > m_clTime) &&
+		(m_pCurrentEntity->latched.sequencetime + flBlendTime > m_clTime) &&
 		(m_pCurrentEntity->latched.prevsequence < m_pStudioHeader->numseq))
 	{
 		// blend from last sequence
@@ -1080,7 +1086,7 @@ void CStudioModelRenderer::StudioSetupBones()
 			}
 		}
 
-		s = 1.0 - (m_clTime - m_pCurrentEntity->latched.sequencetime) / 0.01f;
+		s = 1.0 - (m_clTime - m_pCurrentEntity->latched.sequencetime) / flBlendTime;
 		StudioSlerpBones(q, pos, q1b, pos1b, s);
 	}
 	else
@@ -1286,15 +1292,21 @@ int CStudioModelRenderer::StudioDrawModel(int flags)
 	if (m_pCurrentEntity == gEngfuncs.GetViewModel())
 	{
 		static model_s* pPrevModel = nullptr;
-
-		m_pCurrentEntity->latched.sequencetime = m_pCurrentEntity->curstate.animtime;
+		static int iPrevSequence = -1;
 
 		if (pPrevModel != m_pRenderModel)
 		{
 			m_pCurrentEntity->latched.prevsequence = m_pCurrentEntity->curstate.sequence;
 			m_pCurrentEntity->latched.prevframe = 0.0f;
+			m_pCurrentEntity->latched.sequencetime = 0.0f;
 			pPrevModel = m_pRenderModel;
 		}
+		else if (iPrevSequence != m_pCurrentEntity->curstate.sequence)
+		{
+			m_pCurrentEntity->latched.prevsequence = iPrevSequence;
+			m_pCurrentEntity->latched.sequencetime = m_pCurrentEntity->curstate.animtime;
+		}
+		iPrevSequence = m_pCurrentEntity->curstate.sequence;
 	}
 
 	if (m_pTextureHeader == nullptr)
