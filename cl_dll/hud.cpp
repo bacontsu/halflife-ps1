@@ -551,6 +551,8 @@ void CHud::Init()
 
 	m_Menu.Init();
 
+	m_FranAudioManager.Init(); // Fran
+
 	MsgFunc_ResetHUD(nullptr, 0, nullptr);
 
 #ifdef STEAM_RICH_PRESENCE
@@ -713,6 +715,8 @@ void CHud::VidInit()
 	m_TextMessage.VidInit();
 	m_StatusIcons.VidInit();
 	GetClientVoiceMgr()->VidInit();
+
+	m_FranAudioManager.VidInit(); // Fran
 
 	// RENDERERS START
 	R_VidInit();

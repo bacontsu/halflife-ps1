@@ -67,6 +67,9 @@
     <Filter Include="Header Files\common\FranUtils">
       <UniqueIdentifier>{c15fe27e-24dd-4739-9196-34b3db30db54}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\cl_dll\audio">
+      <UniqueIdentifier>{b6f40fee-2a45-44d9-8735-97eccef25d48}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\dlls\crossbow.cpp">
@@ -350,6 +353,9 @@
     </ClCompile>
     <ClCompile Include="..\..\cl_dll\renderer\svd_format.cpp">
       <Filter>Source Files\cl_dll\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\cl_dll\audio\FranAudioManager.cpp">
+      <Filter>Header Files\cl_dll\audio</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -670,6 +676,9 @@
     </ClInclude>
     <ClInclude Include="..\..\cl_dll\renderer\svd_format.h">
       <Filter>Header Files\cl_dll\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\cl_dll\audio\FranAudioManager.hpp">
+      <Filter>Header Files\cl_dll\audio</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

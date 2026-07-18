@@ -35,6 +35,8 @@
 // RENDERERS START
 #include "renderer/frustum.h"
 
+#include "audio/FranAudioManager.hpp"
+
 struct fog_settings_t
 {
 	Vector color;
@@ -611,6 +613,8 @@ public:
 	CHudAmmoSecondary m_AmmoSecondary;
 	CHudTextMessage m_TextMessage;
 	CHudStatusIcons m_StatusIcons;
+
+	CFranAudioManager m_FranAudioManager; // FranAudio Manager Instance
 
 	void Init();
 	void VidInit();
