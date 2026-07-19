@@ -1,4 +1,4 @@
-// FranticDreamer 2026
+// FranticDreamer 2022-2026
 
 // Water shader setting defaults for func_water.
 // Shared between the server entity (dlls/doors.cpp) and the client's water shader (cl_dll/renderer/watershader.h)
