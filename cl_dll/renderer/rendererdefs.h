@@ -510,11 +510,18 @@ struct cl_dlight_t
 //
 //==================================================
 constexpr int WATER_RESOLUTION = 512;
+constexpr int WATER_HIGH_QUALITY_SUBDIVISIONS = 16;
 
 //==================================================
 //				WATER SHADER STRUCTS
 //
 //==================================================
+struct water_vertex_t
+{
+	float position[3];
+	float texcoord[2];
+};
+
 struct cl_water_t
 {
 	int index;
@@ -530,10 +537,12 @@ struct cl_water_t
 	GLuint refract;
 	GLuint reflect;
 	GLuint dbuffer;
+	GLuint highqualitybuffer;
+	int highqualityvertexcount;
 
 	std::vector<msurface_t*> surfaces;
 
-	cl_water_t() : index(0), entity(nullptr), wplane{}, draw(false), refract(0), reflect(0), dbuffer(0) {}
+	cl_water_t() : index(0), entity(nullptr), wplane{}, draw(false), refract(0), reflect(0), dbuffer(0), highqualitybuffer(0), highqualityvertexcount(0) {}
 };
 
 //==================================================

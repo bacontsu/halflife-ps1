@@ -56,18 +56,53 @@ extern float sgn(float a);
 char water_vertex_shader[] =
 	"#version 120\n"
 	"uniform int v_radialfog;\n"
+	"uniform int v_quality;\n"
 	"uniform float v_time;\n"
 	"uniform float v_waveheight;\n"
 	"uniform float v_wavefreq;\n"
 	"uniform float v_wavespeed;\n"
+	"varying vec3 v_wavenormal;\n"
 	"void main()\n"
 	"{\n"
 	"	vec4 vert = gl_Vertex;\n"
+	"	v_wavenormal = vec3(0.0, 0.0, 1.0);\n"
 	"	if (v_waveheight > 0.0)\n"
 	"	{\n"
-	"		float wave = sin(v_time * v_wavespeed + vert.x * v_wavefreq);\n"
-	"		wave += cos(v_time * v_wavespeed * 0.83 + vert.y * v_wavefreq * 1.27);\n"
-	"		vert.z += wave * 0.5 * v_waveheight;\n"
+	"		if (v_quality == 0)\n"
+	"		{\n"
+	"			float wave = sin(v_time * v_wavespeed + vert.x * v_wavefreq);\n"
+	"			wave += cos(v_time * v_wavespeed * 0.83 + vert.y * v_wavefreq * 1.27);\n"
+	"			vert.z += wave * 0.5 * v_waveheight;\n"
+	"		}\n"
+	"		else\n"
+	"		{\n"
+	"			vec2 p = vert.xy;\n"
+	"			float t = mod(v_time * v_wavespeed, 6283.18530718);\n"
+	"			vec2 d0 = vec2(0.980581, 0.196116);\n"
+	"			vec2 d1 = vec2(-0.447214, 0.894427);\n"
+	"			vec2 d2 = vec2(0.707107, 0.707107);\n"
+	"			vec2 d3 = vec2(-0.894427, -0.447214);\n"
+	"			vec2 d4 = vec2(0.242536, -0.970143);\n"
+	"			float f0 = v_wavefreq;\n"
+	"			float f1 = v_wavefreq * 1.37;\n"
+	"			float f2 = v_wavefreq * 1.91;\n"
+	"			float f3 = v_wavefreq * 2.63;\n"
+	"			float f4 = v_wavefreq * 3.41;\n"
+	"			float p0 = dot(p, d0) * f0 + t;\n"
+	"			float p1 = dot(p, d1) * f1 + t * 1.21 + 1.7;\n"
+	"			float p2 = dot(p, d2) * f2 + t * 0.83 + 3.1;\n"
+	"			float p3 = dot(p, d3) * f3 + t * 1.47 + 4.6;\n"
+	"			float p4 = dot(p, d4) * f4 + t * 1.13 + 5.8;\n"
+	"			float wave = sin(p0) * 0.36 + sin(p1) * 0.25 + sin(p2) * 0.18;\n"
+	"			wave += sin(p3) * 0.13 + sin(p4) * 0.08;\n"
+	"			vec2 slope = d0 * (cos(p0) * f0 * 0.36);\n"
+	"			slope += d1 * (cos(p1) * f1 * 0.25);\n"
+	"			slope += d2 * (cos(p2) * f2 * 0.18);\n"
+	"			slope += d3 * (cos(p3) * f3 * 0.13);\n"
+	"			slope += d4 * (cos(p4) * f4 * 0.08);\n"
+	"			vert.z += wave * v_waveheight;\n"
+	"			v_wavenormal = normalize(vec3(-slope * v_waveheight, 1.0));\n"
+	"		}\n"
 	"	}\n"
 	"	vec4 eyepos = gl_ModelViewMatrix * vert;\n"
 	"	gl_Position = gl_ProjectionMatrix * eyepos;\n"
@@ -88,7 +123,9 @@ char water_fragment_above[] =
 	"uniform vec3 v_watercolor;\n"
 	"uniform float v_fresnel;\n"
 	"uniform float v_time;\n"
+	"uniform int v_quality;\n"
 	"uniform int v_fogenabled;\n"
+	"varying vec3 v_wavenormal;\n"
 	"void main()\n"
 	"{\n"
 	"	vec2 uv = gl_TexCoord[0].xy;\n"
@@ -96,13 +133,23 @@ char water_fragment_above[] =
 	"	nsum += texture2D(normalmap, uv + vec2(0.2, 0.15) * v_time).rgb;\n"
 	"	nsum += texture2D(normalmap, uv + vec2(0.17, 0.15) * v_time).rgb;\n"
 	"	nsum += texture2D(normalmap, uv + vec2(-0.14, -0.16) * v_time).rgb;\n"
-	"	vec3 normal = normalize(nsum * 0.5 - 1.0);\n"
+	"	vec3 detailnormal = normalize(nsum * 0.5 - 1.0);\n"
+	"	vec3 normal = detailnormal;\n"
+	"	if (v_quality != 0)\n"
+	"		normal = normalize(vec3(v_wavenormal.xy + detailnormal.xy * 0.32, max(v_wavenormal.z, 0.2)));\n"
 	"	vec2 distort = normal.xy * 0.23;\n"
 	"	vec2 ndc = gl_TexCoord[1].xy / gl_TexCoord[1].w;\n"
 	"	vec4 refraction = texture2D(refractmap, ndc * 0.5 + distort + 0.5);\n"
 	"	vec4 reflection = texture2D(reflectmap, vec2(ndc.x, -ndc.y) * 0.5 + distort + 0.5);\n"
 	"	vec3 viewdir = v_vieworigin - gl_TexCoord[2].xyz;\n"
-	"	float fresnel = clamp(min(viewdir.z / length(viewdir) * v_fresnel * 1.3, 0.97), 0.0, 1.0);\n"
+	"	float fresnel;\n"
+	"	if (v_quality == 0)\n"
+	"		fresnel = clamp(min(viewdir.z / length(viewdir) * v_fresnel * 1.3, 0.97), 0.0, 1.0);\n"
+	"	else\n"
+	"	{\n"
+	"		float facing = clamp(dot(normalize(viewdir), v_wavenormal), 0.0, 1.0);\n"
+	"		fresnel = clamp(min(facing * v_fresnel * 1.3, 0.97), 0.0, 1.0);\n"
+	"	}\n"
 	"	vec4 color = mix(reflection, refraction, fresnel);\n"
 	"	float luminance = color.r + color.g + color.b;\n"
 	"	color = mix(color, vec4(v_watercolor * luminance / 3.0, 0.17), 0.2);\n"
@@ -122,7 +169,9 @@ char water_fragment_under[] =
 	"uniform sampler2D refractmap;\n"
 	"uniform vec3 v_watercolor;\n"
 	"uniform float v_time;\n"
+	"uniform int v_quality;\n"
 	"uniform int v_fogenabled;\n"
+	"varying vec3 v_wavenormal;\n"
 	"void main()\n"
 	"{\n"
 	"	vec2 uv = gl_TexCoord[0].xy;\n"
@@ -130,7 +179,10 @@ char water_fragment_under[] =
 	"	nsum += texture2D(normalmap, uv + vec2(0.2, 0.15) * v_time).rgb;\n"
 	"	nsum += texture2D(normalmap, uv + vec2(0.17, 0.15) * v_time).rgb;\n"
 	"	nsum += texture2D(normalmap, uv + vec2(-0.14, -0.16) * v_time).rgb;\n"
-	"	vec3 normal = normalize(nsum * 0.5 - 1.0);\n"
+	"	vec3 detailnormal = normalize(nsum * 0.5 - 1.0);\n"
+	"	vec3 normal = detailnormal;\n"
+	"	if (v_quality != 0)\n"
+	"		normal = normalize(vec3(v_wavenormal.xy + detailnormal.xy * 0.32, max(v_wavenormal.z, 0.2)));\n"
 	"	vec2 distort = normal.xy * 0.3;\n"
 	"	vec2 ndc = gl_TexCoord[1].xy / gl_TexCoord[1].w;\n"
 	"	vec4 refraction = texture2D(refractmap, ndc * 0.5 + distort + 0.5);\n"
@@ -143,6 +195,82 @@ char water_fragment_under[] =
 	"	}\n"
 	"	gl_FragColor = color;\n"
 	"}\n";
+
+static water_vertex_t InterpolateWaterVertex(const float* a, const float* b, const float* c, float u, float v)
+{
+	water_vertex_t result;
+	for (int i = 0; i < 3; i++)
+		result.position[i] = a[i] + (b[i] - a[i]) * u + (c[i] - a[i]) * v;
+
+	for (int i = 0; i < 2; i++)
+		result.texcoord[i] = a[i + 3] + (b[i + 3] - a[i + 3]) * u + (c[i + 3] - a[i + 3]) * v;
+
+	return result;
+}
+
+static void SubdivideWaterTriangle(const float* a, const float* b, const float* c, std::vector<water_vertex_t>& vertices)
+{
+	const int subdivisions = WATER_HIGH_QUALITY_SUBDIVISIONS;
+	const float inverseSubdivisions = 1.0f / (float)subdivisions;
+
+	for (int row = 0; row < subdivisions; row++)
+	{
+		for (int column = 0; column < subdivisions - row; column++)
+		{
+			float u = (float)row * inverseSubdivisions;
+			float v = (float)column * inverseSubdivisions;
+
+			vertices.push_back(InterpolateWaterVertex(a, b, c, u, v));
+			vertices.push_back(InterpolateWaterVertex(a, b, c, u + inverseSubdivisions, v));
+			vertices.push_back(InterpolateWaterVertex(a, b, c, u, v + inverseSubdivisions));
+
+			if (row + column + 1 < subdivisions)
+			{
+				vertices.push_back(InterpolateWaterVertex(a, b, c, u + inverseSubdivisions, v));
+				vertices.push_back(InterpolateWaterVertex(a, b, c, u + inverseSubdivisions, v + inverseSubdivisions));
+				vertices.push_back(InterpolateWaterVertex(a, b, c, u, v + inverseSubdivisions));
+			}
+		}
+	}
+}
+
+static void BuildHighQualityWaterMesh(cl_water_t* water)
+{
+	std::vector<water_vertex_t> vertices;
+
+	for (msurface_t* surface : water->surfaces)
+	{
+		for (glpoly_t* polygon = surface->polys; polygon != nullptr; polygon = polygon->next)
+		{
+			if (polygon->numverts < 3)
+				continue;
+
+			vertices.reserve(vertices.size() + (polygon->numverts - 2) * 3 * WATER_HIGH_QUALITY_SUBDIVISIONS * WATER_HIGH_QUALITY_SUBDIVISIONS);
+
+			for (int i = 1; i < polygon->numverts - 1; i++)
+			{
+				SubdivideWaterTriangle(
+					polygon->verts[0],
+					polygon->verts[i],
+					polygon->verts[i + 1],
+					vertices);
+			}
+		}
+	}
+
+	if (vertices.empty())
+		return;
+
+	water->highqualityvertexcount = (int)vertices.size();
+	gBSPRenderer.glGenBuffersARB(1, &water->highqualitybuffer);
+	gBSPRenderer.glBindBufferARB(GL_ARRAY_BUFFER_ARB, water->highqualitybuffer);
+	gBSPRenderer.glBufferDataARB(
+		GL_ARRAY_BUFFER_ARB,
+		sizeof(water_vertex_t) * vertices.size(),
+		vertices.data(),
+		GL_STATIC_DRAW_ARB);
+	gBSPRenderer.glBindBufferARB(GL_ARRAY_BUFFER_ARB, gBSPRenderer.m_uiBufferIndex);
+}
 
 //===========================================
 //	GLSL SHADERS
@@ -159,6 +287,7 @@ void CWaterShader::Init()
 	// Set up cvar
 	m_pCvarWaterShader = gEngfuncs.pfnRegisterVariable("te_water", "1", FCVAR_ARCHIVE);
 	m_pCvarWaterDebug = gEngfuncs.pfnRegisterVariable("te_water_debug", "0", 0);
+	m_pCvarWaterQuality = gEngfuncs.pfnRegisterVariable("te_water_quality", "1", FCVAR_ARCHIVE);
 
 	if (!gBSPRenderer.m_bShaderSupport)
 		return;
@@ -180,6 +309,7 @@ void CWaterShader::Init()
 	m_waterUniformsAbove.waveheight = m_waterShaderAbove.GetUniform("v_waveheight");
 	m_waterUniformsAbove.wavefreq = m_waterShaderAbove.GetUniform("v_wavefreq");
 	m_waterUniformsAbove.wavespeed = m_waterShaderAbove.GetUniform("v_wavespeed");
+	m_waterUniformsAbove.quality = m_waterShaderAbove.GetUniform("v_quality");
 
 	m_waterUniformsUnder.radialfog = m_waterShaderUnder.GetUniform("v_radialfog");
 	m_waterUniformsUnder.fogenabled = m_waterShaderUnder.GetUniform("v_fogenabled");
@@ -190,6 +320,7 @@ void CWaterShader::Init()
 	m_waterUniformsUnder.waveheight = m_waterShaderUnder.GetUniform("v_waveheight");
 	m_waterUniformsUnder.wavefreq = m_waterShaderUnder.GetUniform("v_wavefreq");
 	m_waterUniformsUnder.wavespeed = m_waterShaderUnder.GetUniform("v_wavespeed");
+	m_waterUniformsUnder.quality = m_waterShaderUnder.GetUniform("v_quality");
 
 	m_waterShaderAbove.Bind();
 	m_waterShaderAbove.SetUniform1i(m_waterShaderAbove.GetUniform("normalmap"), 0);
@@ -215,6 +346,8 @@ void CWaterShader::ClearEntities()
 	{
 		glDeleteTextures(1, &water.reflect);
 		glDeleteTextures(1, &water.refract);
+		if (water.highqualitybuffer != 0)
+			gBSPRenderer.glDeleteBuffersARB(1, &water.highqualitybuffer);
 	}
 
 	m_dequeWaterEntities.clear();
@@ -445,6 +578,7 @@ void CWaterShader::AddEntity(cl_entity_t* entity)
 
 	pWater->entity = entity;
 	pWater->entity->efrag = (efrag_s*)pWater;
+	BuildHighQualityWaterMesh(pWater);
 
 	pWater->wplane.dist = psurfaces->plane->dist;
 	pWater->wplane.type = psurfaces->plane->type;
@@ -883,6 +1017,7 @@ void CWaterShader::DrawWater()
 	float flTime = gEngfuncs.GetClientTime();
 	int iRadialFog = (gBSPRenderer.m_bRadialFogSupport && gBSPRenderer.m_pCvarRadialFog->value > 0) ? 1 : 0;
 	int iFogEnabled = gHUD.m_pFogSettings.active ? 1 : 0;
+	int iWaterQuality = (m_pCvarWaterQuality->value >= 1.0f) ? 1 : 0;
 
 	gBSPRenderer.EnableVertexArray();
 	gBSPRenderer.SetTexPointer(0, TC_TEXTURE);
@@ -918,6 +1053,7 @@ void CWaterShader::DrawWater()
 			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.waveheight, settings.waveheight);
 			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.wavefreq, settings.wavefreq);
 			m_waterShaderAbove.SetUniform1f(m_waterUniformsAbove.wavespeed, settings.wavespeed);
+			m_waterShaderAbove.SetUniform1i(m_waterUniformsAbove.quality, iWaterQuality);
 		}
 		else
 		{
@@ -930,6 +1066,7 @@ void CWaterShader::DrawWater()
 			m_waterShaderUnder.SetUniform1f(m_waterUniformsUnder.waveheight, settings.waveheight);
 			m_waterShaderUnder.SetUniform1f(m_waterUniformsUnder.wavefreq, settings.wavefreq);
 			m_waterShaderUnder.SetUniform1f(m_waterUniformsUnder.wavespeed, settings.wavespeed);
+			m_waterShaderUnder.SetUniform1i(m_waterUniformsUnder.quality, iWaterQuality);
 		}
 
 		gBSPRenderer.Bind2DTexture(GL_TEXTURE0_ARB, m_pNormalTexture->iIndex);
@@ -952,8 +1089,33 @@ void CWaterShader::DrawWater()
 		if (j == i)
 			gBSPRenderer.Bind2DTexture(GL_TEXTURE2_ARB, m_pCurWater->reflect);
 
-		for (msurface_t* pSurface : m_pCurWater->surfaces)
-			gBSPRenderer.DrawPolyFromArray(gBSPRenderer.m_pWorld->surfaces, pSurface);
+		if (iWaterQuality != 0 && m_pCurWater->highqualitybuffer != 0)
+		{
+			gBSPRenderer.glBindBufferARB(GL_ARRAY_BUFFER_ARB, m_pCurWater->highqualitybuffer);
+			glVertexPointer(3, GL_FLOAT, sizeof(water_vertex_t), OFFSET(water_vertex_t, position));
+			gBSPRenderer.glClientActiveTextureARB(GL_TEXTURE0_ARB);
+			glTexCoordPointer(2, GL_FLOAT, sizeof(water_vertex_t), OFFSET(water_vertex_t, texcoord));
+
+			if (gBSPRenderer.m_bSpecialFog)
+				glDisableClientState(GL_FOG_COORD_ARRAY);
+
+			glDrawArrays(GL_TRIANGLES, 0, m_pCurWater->highqualityvertexcount);
+
+			gBSPRenderer.glBindBufferARB(GL_ARRAY_BUFFER_ARB, gBSPRenderer.m_uiBufferIndex);
+			glVertexPointer(3, GL_FLOAT, sizeof(brushvertex_t), OFFSET(brushvertex_t, pos));
+			glTexCoordPointer(2, GL_FLOAT, sizeof(brushvertex_t), OFFSET(brushvertex_t, texcoord));
+
+			if (gBSPRenderer.m_bSpecialFog)
+			{
+				glEnableClientState(GL_FOG_COORD_ARRAY);
+				gBSPRenderer.glFogCoordPointer(GL_FLOAT, sizeof(brushvertex_t), OFFSET(brushvertex_t, fogcoord));
+			}
+		}
+		else
+		{
+			for (msurface_t* pSurface : m_pCurWater->surfaces)
+				gBSPRenderer.DrawPolyFromArray(gBSPRenderer.m_pWorld->surfaces, pSurface);
+		}
 
 		glMatrixMode(GL_MODELVIEW);
 		glPopMatrix();

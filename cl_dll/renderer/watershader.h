@@ -46,6 +46,7 @@ struct glsl_water_uniforms_t
 	GLint waveheight;
 	GLint wavefreq;
 	GLint wavespeed;
+	GLint quality;
 };
 
 // Per-entity Water Settings.
@@ -126,6 +127,7 @@ public:
 
 	cvar_t* m_pCvarWaterShader;
 	cvar_t* m_pCvarWaterDebug;
+	cvar_t* m_pCvarWaterQuality;
 
 	cl_texture_t* m_pNormalTexture;
 	cl_water_t* m_pCurWater;
