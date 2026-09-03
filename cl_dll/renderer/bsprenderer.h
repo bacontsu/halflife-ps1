@@ -65,6 +65,7 @@ public:
 	void RenderFirstPass(bool bSecond = false);
 	void RenderFinalPasses(bool bSecond = false);
 	void DrawWorld();
+	void UpdateAffineMatrices();
 
 	void GetRenderEnts();
 	void AddEntity(cl_entity_t* pEntity);
@@ -243,6 +244,11 @@ public:
 	cvar_t* m_pCvarRadialFog;
 	cvar_t* m_pCvarPCFShadows;
 	cvar_t* m_pCvarShadows;
+	cvar_t* m_pCvarAffine;
+
+	bool m_bAffinePassActive;
+	float m_flAffineModelView[16];
+	float m_flAffineProjection[16];
 
 	Vector m_vDLightMins;
 	Vector m_vDLightMaxs;
@@ -319,6 +325,7 @@ public:
 	PFNGLTEXIMAGE3DEXTPROC glTexImage3DEXT;
 
 	PFNGLFOGCOORDPOINTEREXTPROC glFogCoordPointer;
+	PFNGLFOGCOORDFEXTPROC glFogCoordf;
 	PFNGLBLENDCOLORPROC glBlendColor;
 #ifdef HL25_UPDATE
 	PFNGLUSEPROGRAMPROC glUseProgram;

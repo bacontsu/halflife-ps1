@@ -242,6 +242,7 @@ void CBSPRenderer::Init()
 	glTexImage3DEXT = (PFNGLTEXIMAGE3DEXTPROC)wglGetProcAddress("glTexImage3DEXT");
 
 	glFogCoordPointer = (PFNGLFOGCOORDPOINTEREXTPROC)wglGetProcAddress("glFogCoordPointer");
+	glFogCoordf = (PFNGLFOGCOORDFEXTPROC)wglGetProcAddress("glFogCoordfEXT");
 
 	// GL 1.4 Blend Constant.
 	// Used to drive Translucent Brush-Entity Alpha independently of the Texture Environment (see kRenderTransTexture in DrawBrushModel).
@@ -338,6 +339,7 @@ void CBSPRenderer::Init()
 	m_pCvarRadialFog = CVAR_CREATE("te_radialfog", "1", 0);
 	m_pCvarPCFShadows = CVAR_CREATE("te_shadows_filter", "1", FCVAR_ARCHIVE);
 	m_pCvarShadows = CVAR_CREATE("te_shadows", "1", FCVAR_ARCHIVE);
+	m_pCvarAffine = CVAR_CREATE("te_affine", "0", FCVAR_ARCHIVE);
 
 	//
 	// Load shaders
@@ -2038,6 +2040,8 @@ ResetRenderer
 */
 void CBSPRenderer::ResetRenderer()
 {
+	m_bAffinePassActive = false;
+
 	for (int i = 0; i < 3; i++)
 	{
 		glActiveTextureARB(GL_TEXTURE0_ARB + i);
@@ -2104,6 +2108,20 @@ bool CBSPRenderer::HasDynLights()
 	return false;
 };
 
+static void TE_MultiplyAffineMatrixVec4(const float* m, const float* v, float* out)
+{
+	out[0] = m[0] * v[0] + m[4] * v[1] + m[8]  * v[2] + m[12] * v[3];
+	out[1] = m[1] * v[0] + m[5] * v[1] + m[9]  * v[2] + m[13] * v[3];
+	out[2] = m[2] * v[0] + m[6] * v[1] + m[10] * v[2] + m[14] * v[3];
+	out[3] = m[3] * v[0] + m[7] * v[1] + m[11] * v[2] + m[15] * v[3];
+}
+
+void CBSPRenderer::UpdateAffineMatrices()
+{
+	glGetFloatv(GL_MODELVIEW_MATRIX, m_flAffineModelView);
+	glGetFloatv(GL_PROJECTION_MATRIX, m_flAffineProjection);
+}
+
 /*
 ====================
 PrepareRenderer
@@ -2112,6 +2130,9 @@ PrepareRenderer
 */
 void CBSPRenderer::PrepareRenderer()
 {
+	UpdateAffineMatrices();
+	m_bAffinePassActive = (m_pCvarAffine != nullptr && m_pCvarAffine->value > 0.0f);
+
 	glDisable(GL_BLEND);
 	glDepthMask(GL_TRUE);
 	glDepthFunc(GL_LEQUAL);
@@ -2985,7 +3006,265 @@ void CBSPRenderer::DrawPolyFromArray(msurface_t* psurfbase, msurface_t* psurf)
 	int surfaceIndex = psurf - psurfbase;
 	brushface_t* pbrushface = m_pSurfacePointersArray[surfaceIndex];
 
-	glDrawArrays(GL_TRIANGLES, pbrushface->start_vertex, pbrushface->num_vertexes);
+	// te_affine is now a strength control:
+	//
+	//   0.0 = normal perspective-correct mapping
+	//   0.1 = very subtle PS1-style affine warping
+	//   0.25 = noticeable
+	//   1.0 = full affine mapping
+	//
+	// Keeping this as a continuous value lets the effect be tuned instead
+	// of forcing an "alive texture" look at full strength.
+	float affineStrength = 0.0f;
+	if (m_bAffinePassActive && m_pCvarAffine != nullptr)
+	{
+		affineStrength = m_pCvarAffine->value;
+		if (affineStrength < 0.0f)
+			affineStrength = 0.0f;
+		else if (affineStrength > 1.0f)
+			affineStrength = 1.0f;
+	}
+
+	if (affineStrength <= 0.0f)
+	{
+		glDrawArrays(GL_TRIANGLES, pbrushface->start_vertex, pbrushface->num_vertexes);
+		return;
+	}
+
+	/*
+	 * We deliberately keep the original projection for the geometry, but
+	 * reduce the W used by rasterization toward 1:
+	 *
+	 *     effectiveW = mix(originalW, 1, affineStrength)
+	 *
+	 * X/Y/Z are scaled by effectiveW, so their NDC position is unchanged.
+	 * The important part is that the rasterizer now performs progressively
+	 * less perspective correction on texture coordinates.
+	 *
+	 * At strength 1:
+	 *     effectiveW = 1
+	 *     -> completely affine interpolation.
+	 *
+	 * At strength 0:
+	 *     effectiveW = originalW
+	 *     -> exactly normal OpenGL interpolation.
+	 *
+	 * Unlike the previous implementation, triangles crossing the near
+	 * plane are clipped in CPU clip-space first. This prevents the old
+	 * "one vertex crossed W <= 0 -> draw the entire triangle normally"
+	 * fallback, which was responsible for the visible snapping.
+	 */
+
+	struct affine_vertex_t
+	{
+		float clip[4];
+		float tex[4][2];
+		float fog;
+	};
+
+	auto LerpAffineVertex = [](const affine_vertex_t& a, const affine_vertex_t& b, float t, affine_vertex_t& out)
+	{
+		for (int k = 0; k < 4; k++)
+			out.clip[k] = a.clip[k] + (b.clip[k] - a.clip[k]) * t;
+
+		for (int unit = 0; unit < 4; unit++)
+		{
+			out.tex[unit][0] = a.tex[unit][0] + (b.tex[unit][0] - a.tex[unit][0]) * t;
+			out.tex[unit][1] = a.tex[unit][1] + (b.tex[unit][1] - a.tex[unit][1]) * t;
+		}
+
+		out.fog = a.fog + (b.fog - a.fog) * t;
+	};
+
+	auto ClipAffinePolygon = [&](const affine_vertex_t* input, int inputCount, int plane, float planeOffset, affine_vertex_t* output) -> int
+	{
+		// plane 0: W >= planeOffset
+		// plane 1: Z + W >= planeOffset
+		int outputCount = 0;
+
+		if (inputCount <= 0)
+			return 0;
+
+		for (int i = 0; i < inputCount; i++)
+		{
+			const affine_vertex_t& a = input[i];
+			const affine_vertex_t& b = input[(i + 1) % inputCount];
+
+			float da;
+			float db;
+
+			if (plane == 0)
+			{
+				da = a.clip[3] - planeOffset;
+				db = b.clip[3] - planeOffset;
+			}
+			else
+			{
+				da = (a.clip[2] + a.clip[3]) - planeOffset;
+				db = (b.clip[2] + b.clip[3]) - planeOffset;
+			}
+
+			const bool insideA = (da >= 0.0f);
+			const bool insideB = (db >= 0.0f);
+
+			if (insideA && insideB)
+			{
+				output[outputCount++] = b;
+			}
+			else if (insideA && !insideB)
+			{
+				const float denom = da - db;
+				const float t = (fabs(denom) > 0.000001f) ? (da / denom) : 0.0f;
+
+				affine_vertex_t intersection;
+				LerpAffineVertex(a, b, t, intersection);
+				output[outputCount++] = intersection;
+			}
+			else if (!insideA && insideB)
+			{
+				const float denom = da - db;
+				const float t = (fabs(denom) > 0.000001f) ? (da / denom) : 0.0f;
+
+				affine_vertex_t intersection;
+				LerpAffineVertex(a, b, t, intersection);
+				output[outputCount++] = intersection;
+				output[outputCount++] = b;
+			}
+
+			if (outputCount >= 8)
+				break;
+		}
+
+		return outputCount;
+	};
+
+	glPushAttrib(GL_TRANSFORM_BIT);
+
+	// We feed clip-space/NDC positions ourselves. This leaves the normal
+	// texture state, blend state, depth state, alpha test, etc. untouched.
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+
+	const int firstVertex = pbrushface->start_vertex;
+	const int vertexCount = pbrushface->num_vertexes;
+
+	for (int base = 0; base + 2 < vertexCount; base += 3)
+	{
+		affine_vertex_t polygonA[8];
+		affine_vertex_t polygonB[8];
+
+		for (int i = 0; i < 3; i++)
+		{
+			const brushvertex_t& v = m_pBufferData[firstVertex + base + i];
+
+			float in[4] = {v.pos[0], v.pos[1], v.pos[2], 1.0f};
+			float eye[4];
+			float clip[4];
+
+			TE_MultiplyAffineMatrixVec4(m_flAffineModelView, in, eye);
+			TE_MultiplyAffineMatrixVec4(m_flAffineProjection, eye, clip);
+
+			for (int k = 0; k < 4; k++)
+				polygonA[i].clip[k] = clip[k];
+
+			polygonA[i].tex[0][0] = v.texcoord[0];
+			polygonA[i].tex[0][1] = v.texcoord[1];
+
+			polygonA[i].tex[1][0] = v.lightmaptexcoord[0];
+			polygonA[i].tex[1][1] = v.lightmaptexcoord[1];
+
+			polygonA[i].tex[2][0] = v.detailtexcoord[0];
+			polygonA[i].tex[2][1] = v.detailtexcoord[1];
+
+			polygonA[i].tex[3][0] = 0.0f;
+			polygonA[i].tex[3][1] = 0.0f;
+
+			polygonA[i].fog = v.fogcoord;
+		}
+
+		// First remove vertices behind the camera plane.
+		int polygonCount = ClipAffinePolygon(polygonA, 3, 0, 0.00001f, polygonB);
+
+		if (polygonCount < 3)
+			continue;
+
+		// Then clip against the real near plane Z + W >= 0.
+		polygonCount = ClipAffinePolygon(polygonB, polygonCount, 1, 0.0f, polygonA);
+
+		if (polygonCount < 3)
+			continue;
+
+		// Triangle fan. A triangle crossing the near plane can become a
+		// quad, so clipping may produce two triangles here.
+		for (int fan = 1; fan < polygonCount - 1; fan++)
+		{
+			const affine_vertex_t* vtx[3] =
+			{
+				&polygonA[0],
+				&polygonA[fan],
+				&polygonA[fan + 1]
+			};
+
+			glBegin(GL_TRIANGLES);
+
+			for (int i = 0; i < 3; i++)
+			{
+				const affine_vertex_t& v = *vtx[i];
+
+				/*
+				 * Keep the projected screen position identical while
+				 * moving rasterization W toward 1.
+				 */
+				float effectiveW = v.clip[3] + (1.0f - v.clip[3]) * affineStrength;
+
+				if (effectiveW < 0.00001f)
+					effectiveW = 0.00001f;
+
+				const float invOriginalW = 1.0f / v.clip[3];
+				const float ndcX = v.clip[0] * invOriginalW;
+				const float ndcY = v.clip[1] * invOriginalW;
+				const float ndcZ = v.clip[2] * invOriginalW;
+
+				for (int unit = 0; unit < 4; unit++)
+				{
+					const int tc = m_iTexPointer[unit];
+
+					if (tc == TC_TEXTURE)
+						glMultiTexCoord2fARB(GL_TEXTURE0_ARB + unit, v.tex[0][0], v.tex[0][1]);
+					else if (tc == TC_LIGHTMAP)
+						glMultiTexCoord2fARB(GL_TEXTURE0_ARB + unit, v.tex[1][0], v.tex[1][1]);
+					else if (tc == TC_DETAIL_TEXTURE)
+						glMultiTexCoord2fARB(GL_TEXTURE0_ARB + unit, v.tex[2][0], v.tex[2][1]);
+				}
+
+				if (m_bSpecialFog && glFogCoordf != nullptr)
+					glFogCoordf(v.fog);
+
+				glVertex4f(
+					ndcX * effectiveW,
+					ndcY * effectiveW,
+					ndcZ * effectiveW,
+					effectiveW);
+			}
+
+			glEnd();
+		}
+	}
+
+	glMatrixMode(GL_MODELVIEW);
+	glPopMatrix();
+
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix();
+
+	glPopAttrib();
+
+	glMatrixMode(GL_MODELVIEW);
 }
 
 /*
@@ -5093,6 +5372,7 @@ void CBSPRenderer::DrawDynamicLightsForDetails()
 
 	if (!m_bSecondPassNeeded)
 		return;
+	m_bAffinePassActive = false;
 
 	if (gHUD.m_pFogSettings.active)
 		glDisable(GL_FOG);
@@ -5175,6 +5455,8 @@ void CBSPRenderer::DrawDynamicLightsForDetails()
 
 	if (gHUD.m_pFogSettings.active)
 		glEnable(GL_FOG);
+
+	m_bAffinePassActive = true;
 }
 
 
@@ -5194,6 +5476,7 @@ void CBSPRenderer::DrawDynamicLightsForWorld()
 
 	if (!m_bSecondPassNeeded)
 		return;
+	m_bAffinePassActive = false;
 
 	if (gHUD.m_pFogSettings.active)
 		glDisable(GL_FOG);
@@ -5262,6 +5545,8 @@ void CBSPRenderer::DrawDynamicLightsForWorld()
 
 	if (gHUD.m_pFogSettings.active)
 		glEnable(GL_FOG);
+
+	m_bAffinePassActive = true;
 }
 
 /*
@@ -5423,6 +5708,7 @@ void CBSPRenderer::DrawDynamicLightsForEntity(cl_entity_t* pEntity)
 
 	if (m_pCvarDynamic->value < 1)
 		return;
+	m_bAffinePassActive = false;
 
 	if ((pEntity->angles[0] != 0.0f) || (pEntity->angles[1] != 0.0f) || (pEntity->angles[2] != 0.0f))
 	{
@@ -5514,6 +5800,8 @@ void CBSPRenderer::DrawDynamicLightsForEntity(cl_entity_t* pEntity)
 
 	if (gHUD.m_pFogSettings.active)
 		glEnable(GL_FOG);
+
+	m_bAffinePassActive = true;
 }
 
 /*
