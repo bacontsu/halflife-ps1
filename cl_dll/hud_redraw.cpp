@@ -17,6 +17,8 @@
 //
 #include "hud.h"
 #include "cl_util.h"
+#include <GL/gl.h>
+#include <vector>
 
 #include "vgui_TeamFortressViewport.h"
 
@@ -35,6 +37,197 @@ extern bool g_iVisibleMouse;
 float HUD_GetFOV();
 
 extern float IN_GetMouseSensitivity();
+
+
+namespace
+{
+	static std::vector<unsigned char> g_psxReadback;
+	static std::vector<unsigned char> g_psxReduced;
+	static int g_psxBufferWidth = 0;
+	static int g_psxBufferHeight = 0;
+
+	// Ordered 4x4 Bayer matrix. The pattern is evaluated in the reduced
+	// screen space so the dither remains stable relative to the framebuffer.
+	static const unsigned char g_psxBayer4x4[4][4] =
+	{
+		{ 0,  8,  2, 10 },
+		{12,  4, 14,  6 },
+		{ 3, 11,  1,  9 },
+		{15,  7, 13,  5 }
+	};
+
+	static inline unsigned char PSXClampByte(int value)
+	{
+		if (value < 0)
+			return 0;
+		if (value > 255)
+			return 255;
+		return (unsigned char)value;
+	}
+
+	static inline unsigned char PSXQuantizeChannel(int value, int x, int y, int levels, float dither)
+	{
+		if (levels <= 1)
+			return 0;
+
+		// Dither before quantization. The threshold is centered around zero.
+		const int threshold = (int)g_psxBayer4x4[y & 3][x & 3] - 7;
+		value += (int)(threshold * (255.0f / (float)levels) * dither * 0.50f);
+		value = (int)PSXClampByte(value);
+
+		// Quantize to the requested number of levels, then expand back to 8-bit
+		// because the engine's framebuffer upload path still uses RGBA8 pixels.
+		const int q = (value * (levels - 1) + 127) / 255;
+		return (unsigned char)((q * 255 + (levels - 1) / 2) / (levels - 1));
+	}
+
+	static void ApplyPSXPostProcess()
+	{
+		const float downsampleCvar = CVAR_GET_FLOAT("te_downsample");
+		const float paletteCvar = CVAR_GET_FLOAT("te_palette");
+		const float ditherCvar = CVAR_GET_FLOAT("te_dither");
+
+		if (downsampleCvar <= 1.0f && paletteCvar <= 1.0f)
+			return;
+
+		const int width = ScreenWidth;
+		const int height = ScreenHeight;
+
+		if (width <= 0 || height <= 0)
+			return;
+
+		// te_downsample is an integer reduction factor:
+		// 1 = native, 2 = half resolution, 4 = quarter resolution, etc.
+		int factor = (int)(downsampleCvar + 0.5f);
+		if (factor < 1)
+			factor = 1;
+		if (factor > width)
+			factor = width;
+		if (factor > height)
+			factor = height;
+
+		const int lowWidth = (width + factor - 1) / factor;
+		const int lowHeight = (height + factor - 1) / factor;
+
+		const size_t fullSize = (size_t)width * (size_t)height * 4;
+		const size_t reducedSize = (size_t)lowWidth * (size_t)lowHeight * 4;
+
+		if (g_psxBufferWidth != width || g_psxBufferHeight != height)
+		{
+			g_psxReadback.resize(fullSize);
+			g_psxReduced.resize(reducedSize);
+			g_psxBufferWidth = width;
+			g_psxBufferHeight = height;
+		}
+		else
+		{
+			if (g_psxReadback.size() != fullSize)
+				g_psxReadback.resize(fullSize);
+			if (g_psxReduced.size() != reducedSize)
+				g_psxReduced.resize(reducedSize);
+		}
+
+		glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, &g_psxReadback[0]);
+
+		int paletteLevels = (int)(paletteCvar + 0.5f);
+		if (paletteLevels < 2)
+			paletteLevels = 2;
+		if (paletteLevels > 256)
+			paletteLevels = 256;
+
+		const float ditherStrength = ditherCvar > 0.0f ? ditherCvar : 0.0f;
+
+		// Downsample first. Each reduced pixel is a box-filtered block from the
+		// original framebuffer. Palette reduction and dithering happen afterwards.
+		for (int sy = 0; sy < lowHeight; ++sy)
+		{
+			const int y0 = sy * factor;
+			const int y1 = V_min(y0 + factor, height);
+
+			for (int sx = 0; sx < lowWidth; ++sx)
+			{
+				const int x0 = sx * factor;
+				const int x1 = V_min(x0 + factor, width);
+
+				const int sampleX = V_min(x0 + factor / 2, width - 1);
+				const int sampleY = V_min(y0 + factor / 2, height - 1);
+
+				const unsigned char* src =
+					&g_psxReadback[((size_t)sampleY * width + sampleX) * 4];
+
+				int r = src[0];
+				int g = src[1];
+				int b = src[2];
+				int a = src[3];
+
+				unsigned char* dst = &g_psxReduced[((size_t)sy * lowWidth + sx) * 4];
+
+				if (paletteCvar > 1.0f)
+				{
+					dst[0] = PSXQuantizeChannel(r, sx, sy, paletteLevels, ditherStrength);
+					dst[1] = PSXQuantizeChannel(g, sx, sy, paletteLevels, ditherStrength);
+					dst[2] = PSXQuantizeChannel(b, sx, sy, paletteLevels, ditherStrength);
+				}
+				else
+				{
+					dst[0] = (unsigned char)r;
+					dst[1] = (unsigned char)g;
+					dst[2] = (unsigned char)b;
+				}
+
+				dst[3] = (unsigned char)a;
+			}
+		}
+
+		// Scale the reduced framebuffer back to the native display resolution using
+		// nearest-neighbour replication. This is the visible low-resolution effect.
+		for (int y = 0; y < height; ++y)
+		{
+			const int sy = y / factor;
+			for (int x = 0; x < width; ++x)
+			{
+				const int sx = x / factor;
+				const unsigned char* src = &g_psxReduced[((size_t)sy * lowWidth + sx) * 4];
+				unsigned char* dst = &g_psxReadback[((size_t)y * width + x) * 4];
+
+				dst[0] = src[0];
+				dst[1] = src[1];
+				dst[2] = src[2];
+				dst[3] = src[3];
+			}
+		}
+
+		// Repaint the complete framebuffer with the processed pixels. No shader,
+		// texture, or modern OpenGL functionality is required.
+		glPushAttrib(GL_ALL_ATTRIB_BITS);
+		glDisable(GL_BLEND);
+		glDisable(GL_ALPHA_TEST);
+		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_SCISSOR_TEST);
+		glDisable(GL_TEXTURE_2D);
+		glDisable(GL_CULL_FACE);
+		glPixelZoom(1.0f, 1.0f);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+		glMatrixMode(GL_PROJECTION);
+		glPushMatrix();
+		glLoadIdentity();
+		glOrtho(0, width, 0, height, -1, 1);
+
+		glMatrixMode(GL_MODELVIEW);
+		glPushMatrix();
+		glLoadIdentity();
+
+		glRasterPos2i(0, 0);
+		glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_BYTE, &g_psxReadback[0]);
+
+		glPopMatrix();
+		glMatrixMode(GL_PROJECTION);
+		glPopMatrix();
+		glMatrixMode(GL_MODELVIEW);
+		glPopAttrib();
+	}
+}
 
 // Think
 void CHud::Think()
@@ -276,6 +469,8 @@ bool CHud::Redraw(float flTime, bool intermission)
 		SPR_DrawAdditive( 0, mx, my, NULL );
 	}
 	*/
+
+	ApplyPSXPostProcess();
 
 	return true;
 }

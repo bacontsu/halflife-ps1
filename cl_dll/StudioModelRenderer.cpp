@@ -86,6 +86,7 @@ char studio_vertex_shader[] =
 	"uniform vec4 v_lightpos[6];\n"	  // XYZ = Position, W = Is Spotlight?
 	"uniform vec4 v_lightcolor[6];\n" // XYZ = Colour, W = Radius
 	"uniform vec4 v_lightfwd[6];\n"	  // XYZ = Spot direction, W = cos(cutoff)
+	"uniform float f_snap;\n"
 	"void main()\n"
 	"{\n"
 	"	vec3 color = v_ambientlight - v_diffuselight * dot(gl_Normal, v_lightdir);\n"
@@ -108,7 +109,7 @@ char studio_vertex_shader[] =
 	"vec4 viewPos = gl_ModelViewMatrix * gl_Vertex;\n"
 
 	// 2. Define a world-space snap size (e.g., 0.1 units)
-	"float snapValue = 0.25;\n"
+	"float snapValue = 0.2;\n"
 
 	// 3. Snap the view-space coordinates
 	"viewPos.xyz = floor(viewPos.xyz / snapValue) * snapValue;\n"

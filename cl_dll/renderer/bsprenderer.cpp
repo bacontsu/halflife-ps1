@@ -3673,11 +3673,11 @@ void CBSPRenderer::BuildLightmap(msurface_t* surf, int surfindex, color24* out)
 		float flIntensity = (m_pBlockLights[i].r + m_pBlockLights[i].g + m_pBlockLights[i].b) / 3;
 		flIntensity = flIntensity / 50;
 
-		if (flIntensity > 0.8)
-			flIntensity = 0.8;
+		if (flIntensity > 0.5)
+			flIntensity = 0.5;
 
-		m_pBlockLights[i].r = m_pBlockLights[i].r * flIntensity;
-		m_pBlockLights[i].g = m_pBlockLights[i].g * flIntensity;
+		m_pBlockLights[i].r = m_pBlockLights[i].r * flIntensity * 1.0f;
+		m_pBlockLights[i].g = m_pBlockLights[i].g * flIntensity * 1.0f;
 		m_pBlockLights[i].b = m_pBlockLights[i].b * flIntensity;
 	}
 

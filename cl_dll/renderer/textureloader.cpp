@@ -24,6 +24,7 @@ Written by Andrew Lucas
 #include "FranUtils/FranUtils_FileSystem.hpp"
 
 #pragma warning(disable : 4018)
+static float g_flPSXDitherStrength = 0.25f;
 
 static inline byte QuantizePSXChannel(byte value, int x, int y)
 {
@@ -37,7 +38,7 @@ static inline byte QuantizePSXChannel(byte value, int x, int y)
 	int v = value;
 
 	// Bacontsu: Subtle ordered dither before 5-bit quantization
-	v += ((int)bayer[y & 3][x & 3] - 7) * 2;
+	v += (int)(((int)bayer[y & 3][x & 3] - 7) * g_flPSXDitherStrength * 2.0f);
 
 	if (v < 0)
 		v = 0;

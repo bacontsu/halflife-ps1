@@ -527,6 +527,9 @@ public:
 	int m_iRes;
 	cvar_t* m_pCvarStealMouse;
 	cvar_t* m_pCvarDraw;
+	cvar_t* m_pCvarDownsample;
+	cvar_t* m_pCvarPalette;
+	cvar_t* m_pCvarDither;
 	Vector m_vecSkyPos;				//LRC
 	int m_iSkyMode;					//LRC
 	int m_iSkyScale;				//AJH Allows parallax for the sky. 0 means no parallax, i.e infinitly large & far away.
