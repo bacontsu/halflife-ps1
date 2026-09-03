@@ -103,7 +103,19 @@ char studio_vertex_shader[] =
 	"	}\n"
 	"	gl_FrontColor = vec4(clamp(color, 0.0, 1.0), gl_Color.a);\n"
 	"	vec4 eyepos = gl_ModelViewMatrix * gl_Vertex;\n"
-	"	gl_Position = gl_ProjectionMatrix * eyepos;\n"
+
+	 // 1. Transform to View Space
+	"vec4 viewPos = gl_ModelViewMatrix * gl_Vertex;\n"
+
+	// 2. Define a world-space snap size (e.g., 0.1 units)
+	"float snapValue = 0.25;\n"
+
+	// 3. Snap the view-space coordinates
+	"viewPos.xyz = floor(viewPos.xyz / snapValue) * snapValue;\n"
+
+	// 4. Apply projection matrix afterward
+	"gl_Position = gl_ProjectionMatrix * viewPos;\n"
+
 	"	gl_FogFragCoord = (v_radialfog != 0) ? length(eyepos.xyz) : gl_Position.z;\n"
 	"	gl_TexCoord[0] = vec4(gl_MultiTexCoord0.xy * v_texscale, 0.0, 1.0);\n"
 	"}\n";
