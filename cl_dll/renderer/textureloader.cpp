@@ -25,6 +25,31 @@ Written by Andrew Lucas
 
 #pragma warning(disable : 4018)
 
+static inline byte QuantizePSXChannel(byte value, int x, int y)
+{
+	static const byte bayer[4][4] =
+		{
+			{0, 8, 2, 10},
+			{12, 4, 14, 6},
+			{3, 11, 1, 9},
+			{15, 7, 13, 5}};
+
+	int v = value;
+
+	// Bacontsu: Subtle ordered dither before 5-bit quantization
+	v += ((int)bayer[y & 3][x & 3] - 7) * 2;
+
+	if (v < 0)
+		v = 0;
+	else if (v > 255)
+		v = 255;
+
+	// Bacontsu: 8 -> 5 -> 8 bit (look into ths again)
+	const int q = (v * 31 + 127) / 255;
+
+	return (byte)((q * 255 + 15) / 31);
+}
+
 /*
 ====================
 Init
@@ -690,9 +715,14 @@ void CTextureLoader::LoadPallettedTexture(byte* data, byte* pal, cl_texture_t* p
 				}
 			}
 
-			out[0] = (pix1[0] + pix2[0] + pix3[0] + pix4[0]) >> 2;
-			out[1] = (pix1[1] + pix2[1] + pix3[1] + pix4[1]) >> 2;
-			out[2] = (pix1[2] + pix2[2] + pix3[2] + pix4[2]) >> 2;
+			// Bacontsu: apply pallete limit
+			int r = (pix1[0] + pix2[0] + pix3[0] + pix4[0]) >> 2;
+			int g = (pix1[1] + pix2[1] + pix3[1] + pix4[1]) >> 2;
+			int b = (pix1[2] + pix2[2] + pix3[2] + pix4[2]) >> 2;
+
+			out[0] = QuantizePSXChannel((byte)r, j, i);
+			out[1] = QuantizePSXChannel((byte)g, j, i);
+			out[2] = QuantizePSXChannel((byte)b, j, i);
 			out[3] = (alpha1 + alpha2 + alpha3 + alpha4) >> 2;
 		}
 	}
