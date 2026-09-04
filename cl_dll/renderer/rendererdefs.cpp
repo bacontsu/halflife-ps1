@@ -1425,7 +1425,7 @@ void R_DisableSteamMSAA()
 	// make sure we start with FBO / AA disabled
 	gEngfuncs.pfnClientCmd("_set_vid_level 1");
 	gEngfuncs.pfnClientCmd("_sethdmodels 0");
-	gEngfuncs.pfnClientCmd("gl_texturemode GL_LINEAR_MIPMAP_LINEAR");
+	gEngfuncs.pfnClientCmd("gl_texturemode GL_NEAREST");
 	gEngfuncs.pfnClientCmd("gl_round_down 0");
 	gEngfuncs.pfnClientCmd("_restart");
 }

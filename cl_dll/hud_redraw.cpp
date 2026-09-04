@@ -295,6 +295,8 @@ bool CHud::Redraw(float flTime, bool intermission)
 	if (m_flTimeDelta < 0)
 		m_flTimeDelta = 0;
 
+	ApplyPSXPostProcess();
+
 	// Bring up the scoreboard during intermission
 	if (gViewPort != nullptr)
 	{
@@ -469,8 +471,6 @@ bool CHud::Redraw(float flTime, bool intermission)
 		SPR_DrawAdditive( 0, mx, my, NULL );
 	}
 	*/
-
-	ApplyPSXPostProcess();
 
 	return true;
 }
