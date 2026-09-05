@@ -58,8 +58,6 @@ viewinfo_s g_viewinfo;
 // Global engine <-> studio model rendering code interface
 engine_studio_api_t IEngineStudio;
 
-cvar_t* te_render_distance = nullptr;
-
 struct cl_stored_light
 {
 	int index = 0;
@@ -184,6 +182,7 @@ void CStudioModelRenderer::Init()
 	m_pCvarDrawShadows = CVAR_CREATE("gl_shadows", "2", FCVAR_ARCHIVE);
 
 	m_pCvarRenderDistance = CVAR_CREATE("te_render_distance", "0", FCVAR_ARCHIVE);
+	m_pCvarSourceChrome = CVAR_CREATE("te_source_chrome", "0", FCVAR_ARCHIVE);
 
 	//
 	// Load GLSL shaders
@@ -2853,11 +2852,11 @@ void CStudioModelRenderer::StudioChromeForMesh(int j, mstudiomesh_t* pmesh)
 	{
 		DotProductSSE(&n, pstudionorms[k], m_vChromeRight[pnormbone[k]]);
 		// bacontsu - fake specular
-		m_fChrome[k][0] = (n + 1.0) * 32 + (m_pCurrentEntity == gEngfuncs.GetViewModel() ? gEngfuncs.GetLocalPlayer()->curstate.origin.x * 0.1f : 0) + (m_pCurrentEntity == gEngfuncs.GetViewModel() ? fabs(gEngfuncs.GetLocalPlayer()->curstate.angles[YAW]) * 0.25f : 0);
+		m_fChrome[k][0] = (n + 1.0) * 32 + (m_pCurrentEntity == gEngfuncs.GetViewModel() && m_pCvarSourceChrome->value != 0.0f ? gEngfuncs.GetLocalPlayer()->curstate.origin.x * 0.1f : 0) + (m_pCurrentEntity == gEngfuncs.GetViewModel() && m_pCvarSourceChrome->value != 0.0f ? fabs(gEngfuncs.GetLocalPlayer()->curstate.angles[YAW]) * 0.25f : 0);
 
 		DotProductSSE(&n, pstudionorms[k], m_vChromeUp[pnormbone[k]]);
 		// bacontsu - fake specular
-		m_fChrome[k][1] = (n + 1.0) * 32 + (m_pCurrentEntity == gEngfuncs.GetViewModel() ? gEngfuncs.GetLocalPlayer()->curstate.origin.y * 0.1f : 0);
+		m_fChrome[k][1] = (n + 1.0) * 32 + (m_pCurrentEntity == gEngfuncs.GetViewModel() && m_pCvarSourceChrome->value != 0.0f ? gEngfuncs.GetLocalPlayer()->curstate.origin.y * 0.1f : 0);
 	}
 
 	// if (m_pCurrentEntity == gEngfuncs.GetViewModel())
@@ -3652,20 +3651,23 @@ StudioRenderModelEXT
 void CStudioModelRenderer::StudioRenderModelEXT()
 {
 	// bacontsu - render distance, credit to Aynekko (Diffusion)
-	if ((m_pCurrentEntity->curstate.origin - gEngfuncs.GetLocalPlayer()->curstate.origin).Length() > m_pCvarRenderDistance->value && m_pCurrentEntity != gEngfuncs.GetViewModel())
-		return;
-
-	if ((m_pCurrentEntity->curstate.origin - gEngfuncs.GetLocalPlayer()->curstate.origin).Length() > m_pCvarRenderDistance->value - 100.0f && m_pCurrentEntity != gEngfuncs.GetViewModel())
+	if (m_pCvarRenderDistance->value != 0)
 	{
-		float diff = m_pCvarRenderDistance->value - (m_pCurrentEntity->curstate.origin - gEngfuncs.GetLocalPlayer()->curstate.origin).Length();
+		if ((m_pCurrentEntity->curstate.origin - gEngfuncs.GetLocalPlayer()->curstate.origin).Length() > m_pCvarRenderDistance->value && m_pCurrentEntity != gEngfuncs.GetViewModel())
+			return;
 
-		m_pCurrentEntity->curstate.rendermode = kRenderTransTexture;
-		m_pCurrentEntity->curstate.renderamt = diff * 255.0f / 100.0f;
-	}
-	else
-	{
-		m_pCurrentEntity->curstate.renderamt = m_pCurrentEntity->baseline.renderamt;
-		m_pCurrentEntity->curstate.rendermode = m_pCurrentEntity->baseline.rendermode;
+		if ((m_pCurrentEntity->curstate.origin - gEngfuncs.GetLocalPlayer()->curstate.origin).Length() > m_pCvarRenderDistance->value - 100.0f && m_pCurrentEntity != gEngfuncs.GetViewModel())
+		{
+			float diff = m_pCvarRenderDistance->value - (m_pCurrentEntity->curstate.origin - gEngfuncs.GetLocalPlayer()->curstate.origin).Length();
+
+			m_pCurrentEntity->curstate.rendermode = kRenderTransTexture;
+			m_pCurrentEntity->curstate.renderamt = diff * 255.0f / 100.0f;
+		}
+		else
+		{
+			m_pCurrentEntity->curstate.renderamt = m_pCurrentEntity->baseline.renderamt;
+			m_pCurrentEntity->curstate.rendermode = m_pCurrentEntity->baseline.rendermode;
+		}
 	}
 
 	// Save texture states before rendering, so we don't

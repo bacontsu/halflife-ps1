@@ -375,6 +375,7 @@ public:
 
 	// Render distance
 	cvar_t* m_pCvarRenderDistance;
+	cvar_t* m_pCvarSourceChrome;
 
 
 	// Array of transformed vertexes
