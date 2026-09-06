@@ -48,6 +48,10 @@ Extended and/or recoded by Andrew Lucas
 #include "GameStudioModelRenderer.h"
 extern CGameStudioModelRenderer g_StudioRenderer;
 
+// Independent affine strength for decals.  Kept local to this translation unit
+// so the existing CBSPRenderer header does not need to change.
+static cvar_t* g_pCvarAffineDecals = nullptr;
+
 extern "C" 
 {
 #include "pm_shared.h"
@@ -340,6 +344,7 @@ void CBSPRenderer::Init()
 	m_pCvarPCFShadows = CVAR_CREATE("te_shadows_filter", "1", FCVAR_ARCHIVE);
 	m_pCvarShadows = CVAR_CREATE("te_shadows", "1", FCVAR_ARCHIVE);
 	m_pCvarAffine = CVAR_CREATE("te_affine", "0.5", FCVAR_ARCHIVE);
+	g_pCvarAffineDecals = CVAR_CREATE("te_affine_decals", "1.0", FCVAR_ARCHIVE);
 
 	//
 	// Load shaders
@@ -4907,29 +4912,332 @@ void CBSPRenderer::DrawSingleDecal(const CustomDecal& decal)
 {
 	Bind2DTexture(GL_TEXTURE0_ARB, m_mapDecalTexGroups[decal.textureBinding.decalGroup][decal.textureBinding.decalGroupMember].gl_texid);
 
+	
+	// The important part of the decal affine path is that the decal must use
+	// the SAME projected BSP triangle that it is attached to.
+
+	struct decal_vertex_t
+	{
+		Vector position;
+		float texcoord[2];
+	};
+
+	struct decal_clip_vertex_t
+	{
+		float clip[4];
+		float texcoord[2];
+	};
+
+	const bool affineEnabled = (m_pCvarAffine != nullptr && m_pCvarAffine->value > 0.0f);
+	float affineStrength = 0.0f;
+	if (affineEnabled)
+	{
+		if (g_pCvarAffineDecals != nullptr)
+			affineStrength = g_pCvarAffineDecals->value;
+		else
+			affineStrength = m_pCvarAffine->value;
+
+		if (affineStrength < 0.0f)
+			affineStrength = 0.0f;
+		if (affineStrength > 1.0f)
+			affineStrength = 1.0f;
+	}
+
 	for (const auto& poly : decal.polys)
 	{
-		if (poly.surface->visframe != m_iFrameCount)
+		if (poly.surface == nullptr || poly.surface->visframe != m_iFrameCount)
 			continue;
 
+		bool entityTransformPushed = false;
+
+		
+		// poly.verts are stored in brush/model-local coordinates. Apply the exact entity transform used by DrawBrushModel().
 		if (poly.entity != nullptr)
 		{
-			if (IsEntityMoved(poly.entity) != 0)
-			{
-				glPushMatrix();
-				poly.entity->angles[0] = -poly.entity->angles[0]; // stupid quake bug
-				R_RotateForEntity(poly.entity);
-				poly.entity->angles[0] = -poly.entity->angles[0]; // stupid quake bug
-			}
+			glPushMatrix();
+			poly.entity->angles[0] = -poly.entity->angles[0];
+			R_RotateForEntity(poly.entity);
+			poly.entity->angles[0] = -poly.entity->angles[0];
+			entityTransformPushed = true;
 		}
 
-		glBegin(GL_POLYGON);
-		for (const auto& vert : poly.verts)
+		if (!affineEnabled)
 		{
-			glTexCoord2f(vert.texcoord[0], vert.texcoord[1]);
-			glVertex3fv(vert.position);
+			glBegin(GL_POLYGON);
+			for (const auto& vert : poly.verts)
+			{
+				glTexCoord2f(vert.texcoord[0], vert.texcoord[1]);
+				glVertex3fv(vert.position);
+			}
+			glEnd();
 		}
-		glEnd();
+		else
+		{
+			// At this point GL contains camera + brush entity transform, exactly
+			// like it does immediately before DrawPolyFromArray() is called for this brush.
+			float modelView[16];
+			float projection[16];
+			glGetFloatv(GL_MODELVIEW_MATRIX, modelView);
+			glGetFloatv(GL_PROJECTION_MATRIX, projection);
+
+			const int surfaceIndex = poly.surface - m_pWorld->surfaces;
+			brushface_t* pbrushface = nullptr;
+			if (surfaceIndex >= 0 && surfaceIndex < m_pWorld->numsurfaces)
+				pbrushface = m_pSurfacePointersArray[surfaceIndex];
+
+			if (pbrushface != nullptr && pbrushface->num_vertexes >= 3)
+			{
+				auto ClipDecalPolygon = [](const std::vector<decal_vertex_t>& input,
+					const Vector& planeNormal, const Vector& planePoint,
+					std::vector<decal_vertex_t>& output)
+				{
+					output.clear();
+					if (input.size() < 3)
+						return;
+
+					for (size_t i = 0; i < input.size(); i++)
+					{
+						const decal_vertex_t& a = input[i];
+						const decal_vertex_t& b = input[(i + 1) % input.size()];
+
+						float da = DotProduct(a.position - planePoint, planeNormal);
+						float db = DotProduct(b.position - planePoint, planeNormal);
+						bool insideA = da >= -0.0001f;
+						bool insideB = db >= -0.0001f;
+
+						if (insideA)
+							output.push_back(a);
+
+						if (insideA != insideB)
+						{
+							float denom = da - db;
+							float t = (fabs(denom) > 0.000001f) ? (da / denom) : 0.0f;
+
+							decal_vertex_t intersection;
+							intersection.position = a.position + (b.position - a.position) * t;
+							intersection.texcoord[0] = a.texcoord[0] + (b.texcoord[0] - a.texcoord[0]) * t;
+							intersection.texcoord[1] = a.texcoord[1] + (b.texcoord[1] - a.texcoord[1]) * t;
+							output.push_back(intersection);
+						}
+					}
+				};
+
+				auto LerpClipVertex = [](const decal_clip_vertex_t& a,
+					const decal_clip_vertex_t& b, float t, decal_clip_vertex_t& out)
+				{
+					for (int k = 0; k < 4; k++)
+						out.clip[k] = a.clip[k] + (b.clip[k] - a.clip[k]) * t;
+
+					out.texcoord[0] = a.texcoord[0] + (b.texcoord[0] - a.texcoord[0]) * t;
+					out.texcoord[1] = a.texcoord[1] + (b.texcoord[1] - a.texcoord[1]) * t;
+				};
+
+				auto ClipClipPolygon = [&](const std::vector<decal_clip_vertex_t>& input,
+					int plane, float offset, std::vector<decal_clip_vertex_t>& output)
+				{
+					output.clear();
+					if (input.size() < 3)
+						return;
+
+					for (size_t i = 0; i < input.size(); i++)
+					{
+						const decal_clip_vertex_t& a = input[i];
+						const decal_clip_vertex_t& b = input[(i + 1) % input.size()];
+
+						float da;
+						float db;
+						if (plane == 0)
+						{
+							da = a.clip[3] - offset;
+							db = b.clip[3] - offset;
+						}
+						else
+						{
+							da = a.clip[2] + a.clip[3] - offset;
+							db = b.clip[2] + b.clip[3] - offset;
+						}
+
+						bool insideA = da >= 0.0f;
+						bool insideB = db >= 0.0f;
+
+						if (insideA)
+							output.push_back(a);
+
+						if (insideA != insideB)
+						{
+							float denom = da - db;
+							float t = (fabs(denom) > 0.000001f) ? (da / denom) : 0.0f;
+
+							decal_clip_vertex_t intersection;
+							LerpClipVertex(a, b, t, intersection);
+							output.push_back(intersection);
+						}
+					}
+				};
+
+				std::vector<decal_vertex_t> decalPolygon;
+				decalPolygon.reserve(poly.verts.size());
+				for (const auto& vert : poly.verts)
+				{
+					decal_vertex_t v;
+					v.position = vert.position;
+					v.texcoord[0] = vert.texcoord[0];
+					v.texcoord[1] = vert.texcoord[1];
+					decalPolygon.push_back(v);
+				}
+
+				// Identity matrices: vertices below are supplied directly in clip
+				// coordinates, with effectiveW controlling interpolation.
+				glMatrixMode(GL_PROJECTION);
+				glPushMatrix();
+				glLoadIdentity();
+				glMatrixMode(GL_MODELVIEW);
+				glPushMatrix();
+				glLoadIdentity();
+
+				const int firstVertex = pbrushface->start_vertex;
+				const int vertexCount = pbrushface->num_vertexes;
+
+				for (int base = 0; base + 2 < vertexCount; base += 3)
+				{
+					const brushvertex_t& bv0 = m_pBufferData[firstVertex + base + 0];
+					const brushvertex_t& bv1 = m_pBufferData[firstVertex + base + 1];
+					const brushvertex_t& bv2 = m_pBufferData[firstVertex + base + 2];
+
+					const Vector tri[3] = {bv0.pos, bv1.pos, bv2.pos};
+
+					Vector triNormal = CrossProduct(tri[1] - tri[0], tri[2] - tri[0]);
+					float normalLen = triNormal.Length();
+					if (normalLen < 0.000001f)
+						continue;
+					triNormal = triNormal * (1.0f / normalLen);
+
+					Vector triCenter = (tri[0] + tri[1] + tri[2]) * (1.0f / 3.0f);
+
+					std::vector<decal_vertex_t> clippedA = decalPolygon;
+					std::vector<decal_vertex_t> clippedB;
+
+					for (int edge = 0; edge < 3; edge++)
+					{
+						const Vector& a = tri[edge];
+						const Vector& b = tri[(edge + 1) % 3];
+						Vector edgeDir = b - a;
+						Vector edgeNormal = CrossProduct(triNormal, edgeDir);
+						float edgeLen = edgeNormal.Length();
+						if (edgeLen < 0.000001f)
+							continue;
+						edgeNormal = edgeNormal * (1.0f / edgeLen);
+
+						if (DotProduct(triCenter - a, edgeNormal) < 0.0f)
+							edgeNormal = edgeNormal * -1.0f;
+
+						ClipDecalPolygon(clippedA, edgeNormal, a, clippedB);
+						clippedA.swap(clippedB);
+
+						if (clippedA.size() < 3)
+							break;
+					}
+
+					if (clippedA.size() < 3)
+						continue;
+
+					// Exact clip-space values for the ORIGINAL BSP triangle. 
+					float triClip[3][4];
+					for (int v = 0; v < 3; v++)
+					{
+						float in[4] = {tri[v].x, tri[v].y, tri[v].z, 1.0f};
+						float eye[4];
+						TE_MultiplyAffineMatrixVec4(modelView, in, eye);
+						TE_MultiplyAffineMatrixVec4(projection, eye, triClip[v]);
+					}
+
+					std::vector<decal_clip_vertex_t> clipA;
+					std::vector<decal_clip_vertex_t> clipB;
+					clipA.reserve(clippedA.size() + 2);
+					clipB.reserve(clippedA.size() + 2);
+
+					// Convert each clipped point to barycentric coordinates in the
+					// ORIGINAL BSP triangle. This is the critical part: clip W is now
+					// exactly the W of the parent brush triangle at that point.
+					Vector e0 = tri[1] - tri[0];
+					Vector e1 = tri[2] - tri[0];
+
+					float d00 = DotProduct(e0, e0);
+					float d01 = DotProduct(e0, e1);
+					float d11 = DotProduct(e1, e1);
+					float baryDenom = d00 * d11 - d01 * d01;
+					if (fabs(baryDenom) < 0.000001f)
+						continue;
+
+					float invBaryDenom = 1.0f / baryDenom;
+
+					for (const auto& dv : clippedA)
+					{
+						Vector p = dv.position - tri[0];
+						float d20 = DotProduct(p, e0);
+						float d21 = DotProduct(p, e1);
+
+						float b1 = (d11 * d20 - d01 * d21) * invBaryDenom;
+						float b2 = (d00 * d21 - d01 * d20) * invBaryDenom;
+						float b0 = 1.0f - b1 - b2;
+
+						decal_clip_vertex_t cv;
+						for (int k = 0; k < 4; k++)
+							cv.clip[k] = triClip[0][k] * b0 + triClip[1][k] * b1 + triClip[2][k] * b2;
+
+						cv.texcoord[0] = dv.texcoord[0];
+						cv.texcoord[1] = dv.texcoord[1];
+						clipA.push_back(cv);
+					}
+
+					ClipClipPolygon(clipA, 0, 0.00001f, clipB);
+					if (clipB.size() < 3)
+						continue;
+
+					ClipClipPolygon(clipB, 1, 0.0f, clipA);
+					if (clipA.size() < 3)
+						continue;
+
+					for (size_t fan = 1; fan + 1 < clipA.size(); fan++)
+					{
+						const decal_clip_vertex_t* vtx[3] =
+						{
+							&clipA[0],
+							&clipA[fan],
+							&clipA[fan + 1]
+						};
+
+						glBegin(GL_TRIANGLES);
+						for (int i = 0; i < 3; i++)
+						{
+							const decal_clip_vertex_t& v = *vtx[i];
+
+							float effectiveW = v.clip[3] + (1.0f - v.clip[3]) * affineStrength;
+							if (effectiveW < 0.00001f)
+								effectiveW = 0.00001f;
+
+							float invOriginalW = 1.0f / v.clip[3];
+							float ndcX = v.clip[0] * invOriginalW;
+							float ndcY = v.clip[1] * invOriginalW;
+							float ndcZ = v.clip[2] * invOriginalW;
+
+							glTexCoord2f(v.texcoord[0], v.texcoord[1]);
+							glVertex4f(ndcX * effectiveW,
+								ndcY * effectiveW,
+								ndcZ * effectiveW,
+								effectiveW);
+						}
+						glEnd();
+					}
+				}
+
+				glMatrixMode(GL_MODELVIEW);
+				glPopMatrix();
+				glMatrixMode(GL_PROJECTION);
+				glPopMatrix();
+				glMatrixMode(GL_MODELVIEW);
+			}
+		}
 
 		if (m_pCvarWireFrame->value != 0.0f)
 		{
@@ -4965,7 +5273,7 @@ void CBSPRenderer::DrawSingleDecal(const CustomDecal& decal)
 			glColor4f(GL_ONE, GL_ZERO, GL_ONE, GL_ONE);
 		}
 
-		if ((poly.entity != nullptr) && (IsEntityMoved(poly.entity) != 0))
+		if (entityTransformPushed)
 			glPopMatrix();
 	}
 }
