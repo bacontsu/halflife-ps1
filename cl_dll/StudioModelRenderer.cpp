@@ -181,6 +181,12 @@ void CStudioModelRenderer::Init()
 
 	m_pCvarDrawShadows = CVAR_CREATE("gl_shadows", "2", FCVAR_ARCHIVE);
 
+	// Simple fixed-function projected blob shadow.
+	m_pCvarBlobShadows = CVAR_CREATE("te_blob_shadows", "1", FCVAR_ARCHIVE);
+	m_pCvarBlobShadowSize = CVAR_CREATE("te_blob_shadow_size", "18", FCVAR_ARCHIVE);
+	m_pCvarBlobShadowAlpha = CVAR_CREATE("te_blob_shadow_alpha", "0.40", FCVAR_ARCHIVE);
+	m_pCvarBlobShadowDistance = CVAR_CREATE("te_blob_shadow_distance", "128", FCVAR_ARCHIVE);
+
 	m_pCvarRenderDistance = CVAR_CREATE("te_render_distance", "0", FCVAR_ARCHIVE);
 	m_pCvarSourceChrome = CVAR_CREATE("te_source_chrome", "0", FCVAR_ARCHIVE);
 
@@ -313,6 +319,10 @@ CStudioModelRenderer::CStudioModelRenderer()
 	m_pSubModel = nullptr;
 	m_pPlayerInfo = nullptr;
 	m_pRenderModel = nullptr;
+	m_pCvarBlobShadows = nullptr;
+	m_pCvarBlobShadowSize = nullptr;
+	m_pCvarBlobShadowAlpha = nullptr;
+	m_pCvarBlobShadowDistance = nullptr;
 }
 
 /*
@@ -1057,7 +1067,7 @@ void CStudioModelRenderer::StudioSetupBones()
 		}
 	}
 
-	const float flBlendTime = (m_pCurrentEntity == gEngfuncs.GetViewModel()) ? 0.1f : 0.2f;
+	const float flBlendTime = (m_pCurrentEntity == gEngfuncs.GetViewModel()) ? 0.0f : 0.2f;
 
 	if ((m_fDoInterp != 0) &&
 		(m_pCurrentEntity->latched.sequencetime != 0.0f) &&
@@ -1900,6 +1910,198 @@ void CStudioModelRenderer::StudioRenderModel()
 
 /*
 ====================
+StudioDrawBlobShadow
+
+Simple fixed-function projected blob shadow.
+Each point of the circular footprint is traced independently, so the
+shadow conforms to slopes, stairs and uneven world geometry.
+====================
+*/
+void CStudioModelRenderer::StudioDrawBlobShadow()
+{
+	if (m_pCvarBlobShadows == nullptr || m_pCvarBlobShadows->value <= 0.0f)
+		return;
+
+	if (m_pCurrentEntity == nullptr || m_pCurrentEntity == gEngfuncs.GetViewModel())
+		return;
+
+	// Glow-shell entities call StudioRenderFinal twice. Only make one blob.
+	if (m_bChromeShell)
+		return;
+
+	if (m_pStudioHeader == nullptr || m_pRenderModel == nullptr)
+		return;
+
+	if ((m_pCurrentEntity->curstate.effects & FL_NOMODEL) != 0)
+		return;
+
+	// Keep the existing explicit no-shadow convention.
+	if (m_pCurrentEntity->curstate.renderfx == 101)
+		return;
+
+	const float radius = fmax(1.0f, m_pCvarBlobShadowSize->value);
+	const float alpha = fmin(1.0f, fmax(0.0f, m_pCvarBlobShadowAlpha->value));
+	const float traceDistance = fmax(radius + 32.0f, m_pCvarBlobShadowDistance->value);
+	const float shadowOffset = 0.75f;
+
+	if (alpha <= 0.0f)
+		return;
+
+	// The entity origin is the most reliable horizontal anchor. The studio
+	// bbox mins/maxs are already in entity-local coordinates and were filled by
+	// StudioCheckBBox(), so use mins.z to place the trace near the feet.
+	const Vector origin = m_pCurrentEntity->origin;
+
+	// m_vMins/m_vMaxs are the actual world-space bounds produced by
+	// StudioCheckBBox(). They already include entity origin and model rotation.
+	// Use them for the trace height instead of origin + local mins.z.
+	// The latter can put the trace inside the floor when the model is grounded.
+	const float traceStartZ = m_vMaxs.z + 16.0f;
+	const float traceEndZ = m_vMins.z - traceDistance;
+
+	const int NUM_SEGMENTS = 16;
+	Vector ring[NUM_SEGMENTS];
+	bool valid[NUM_SEGMENTS];
+
+	gEngfuncs.pEventAPI->EV_SetTraceHull(0);
+
+	// Trace the center separately so we have a surface normal and a guaranteed
+	// anchor for the fan. Use PM_WORLD_ONLY so the blob follows the actual BSP world surface.
+	// This also avoids the player/entity collision hull causing startsolid/failure.
+	Vector centerStart(origin.x, origin.y, traceStartZ);
+	Vector centerEnd(origin.x, origin.y, traceEndZ);
+	pmtrace_t centerTrace;
+
+	gEngfuncs.pEventAPI->EV_PlayerTrace(
+		centerStart,
+		centerEnd,
+		PM_WORLD_ONLY,
+		-1,
+		&centerTrace);
+
+	if (centerTrace.allsolid != 0)
+		return;
+
+	Vector hitCenter;
+	bool centerValid = (centerTrace.fraction < 1.0f && centerTrace.startsolid == 0);
+
+	if (centerValid)
+	{
+		hitCenter = centerStart + (centerEnd - centerStart) * centerTrace.fraction;
+		//hitCenter += centerTrace.plane.normal * 0.35f;
+		for (int ja = 0; ja < 3; ja++)
+		{
+			hitCenter[ja] += centerTrace.plane.normal[ja] * shadowOffset;
+		}
+	}
+	else
+	{
+		// Fallback keeps the feature visible if the trace starts in a tiny
+		// collision overlap. This is also useful for odd custom entity bounds.
+		hitCenter[0] = origin[0];
+		hitCenter[1] = origin[1];
+		hitCenter[2] = m_vMins.z + 0.5f;
+	}
+
+
+	for (int i = 0; i < NUM_SEGMENTS; ++i)
+	{
+		const float a = (float)i * (2.0f * (float)M_PI / (float)NUM_SEGMENTS);
+		const float x = origin.x + cos(a) * radius;
+		const float y = origin.y + sin(a) * radius;
+
+		Vector start(x, y, traceStartZ);
+		Vector end(x, y, traceEndZ);
+		pmtrace_t tr;
+
+		gEngfuncs.pEventAPI->EV_PlayerTrace(
+			start,
+			end,
+			PM_WORLD_ONLY,
+			-1,
+			&tr);
+
+		valid[i] = false;
+
+		if (tr.allsolid != 0 || tr.startsolid != 0 || tr.fraction >= 1.0f)
+			continue;
+
+		ring[i] = start + (end - start) * tr.fraction;
+		for (int ja = 0; ja < 3; ja++)
+		{
+			ring[i][ja] += tr.plane.normal[ja] * shadowOffset;
+		}
+		valid[i] = true;
+	}
+
+	// IMPORTANT: StudioRenderFinal can be reached while another renderer has
+	// left arbitrary fixed-function state behind. At this point the previous
+	// studio pass has already unbound GLSL, but explicitly unbind again so our
+	// glBegin/glColor calls are guaranteed to use the fixed-function path.
+	CGLSLShader::Unbind();
+
+	glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT |
+		GL_POLYGON_BIT | GL_TEXTURE_BIT | GL_CURRENT_BIT);
+
+	glDisable(GL_TEXTURE_2D);
+	glDisable(GL_ALPHA_TEST);
+	glDisable(GL_CULL_FACE);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+	glDepthMask(GL_FALSE);
+
+	// The shadow is intentionally very close to the world surface. Use polygon
+	// offset as a second layer of protection against depth-buffer coplanar fighting.
+	glEnable(GL_POLYGON_OFFSET_FILL);
+	glPolygonOffset(-1.0f, -1.0f);
+
+	// Prevent the fog from making the small blob effectively invisible.
+	const GLboolean fogWasEnabled = glIsEnabled(GL_FOG);
+	if (fogWasEnabled)
+		glDisable(GL_FOG);
+
+	glShadeModel(GL_SMOOTH);
+
+	// Draw individual triangles instead of one giant fan. On stairs, a few
+	// rays can hit different treads; invalid sectors are simply omitted.
+	glBegin(GL_TRIANGLES);
+	for (int i = 0; i < NUM_SEGMENTS; ++i)
+	{
+		const int j = i;
+		const int k = (i + 1) % NUM_SEGMENTS;
+
+		if (!valid[j] || !valid[k])
+			continue;
+
+		// Do not bridge a large vertical stair riser with one triangle.
+		const float minZ = fmin(ring[j].z, ring[k].z);
+		const float maxZ = fmax(ring[j].z, ring[k].z);
+		if ((maxZ - minZ) > 20.0f)
+			continue;
+
+		// Center is opaque-ish, edge is transparent. Fixed-function smooth
+		// shading gives us a cheap radial soft edge without a texture/shader.
+		glColor4f(0.0f, 0.0f, 0.0f, centerValid ? alpha : alpha * 0.75f);
+		glVertex3fv(hitCenter - Vector(0, 0, 36));
+
+		glColor4f(0.0f, 0.0f, 0.0f, alpha * 0.08f);
+		glVertex3fv(ring[j] - Vector(0, 0, 36));
+
+		glColor4f(0.0f, 0.0f, 0.0f, alpha * 0.08f);
+		glVertex3fv(ring[k] - Vector(0, 0, 36));
+	}
+	glEnd();
+
+	glDepthMask(GL_TRUE);
+	glPopAttrib();
+}
+
+/*
+====================
 StudioRenderFinal
 
 ====================
@@ -1936,6 +2138,11 @@ void CStudioModelRenderer::StudioRenderFinal()
 	*/
 
 	StudioRestoreRenderer();
+
+	// Draw the blob only after the studio shader/fixed-function lighting has
+	// been restored. This is important because the blob uses glBegin/glColor.
+	StudioDrawBlobShadow();
+
 	StudioDrawDecals();
 
 	// Restore this here, so decals won't mess up
@@ -3650,6 +3857,10 @@ StudioRenderModelEXT
 */
 void CStudioModelRenderer::StudioRenderModelEXT()
 {
+	// EXT draws with an explicit entity matrix below, so the blob must be
+	// emitted before that matrix is pushed; the blob vertices are world-space.
+	StudioDrawBlobShadow();
+
 	// bacontsu - render distance, credit to Aynekko (Diffusion)
 	if (m_pCvarRenderDistance->value != 0)
 	{

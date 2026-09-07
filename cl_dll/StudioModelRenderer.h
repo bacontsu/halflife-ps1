@@ -373,6 +373,14 @@ public:
 	// Should we draw shadows?
 	cvar_t* m_pCvarDrawShadows;
 
+	// Simple projected blob shadows.
+	cvar_t* m_pCvarBlobShadows;
+	cvar_t* m_pCvarBlobShadowSize;
+	cvar_t* m_pCvarBlobShadowAlpha;
+	cvar_t* m_pCvarBlobShadowDistance;
+
+	virtual void StudioDrawBlobShadow();
+
 	// Render distance
 	cvar_t* m_pCvarRenderDistance;
 	cvar_t* m_pCvarSourceChrome;
