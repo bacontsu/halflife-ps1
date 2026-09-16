@@ -1937,11 +1937,12 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 	if (m_pCurrentEntity->curstate.renderfx == 101)
 		return;
 
-	const float radius = fmax(1.0f, m_pCvarBlobShadowSize->value);
-	const float alpha = fmin(1.0f, fmax(0.0f, m_pCvarBlobShadowAlpha->value));
-	const float traceDistance = fmax(radius + 32.0f, m_pCvarBlobShadowDistance->value);
+	const float baseRadius = fmax(1.0f, m_pCvarBlobShadowSize->value);
+	const float baseAlpha = fmin(1.0f, fmax(0.0f, m_pCvarBlobShadowAlpha->value));
+	;
+	const float traceDistance = fmax(baseRadius + 32.0f, m_pCvarBlobShadowDistance->value);
 
-	if (alpha <= 0.0f)
+	if (baseAlpha <= 0.0f)
 		return;
 
 	if (m_pbonetransform == nullptr || m_pStudioHeader->numbones <= 0)
@@ -1982,6 +1983,23 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 
 	Vector hitCenter = centerTrace.endpos;
 
+	// Bacontsu - honestly this is dark magic, i dont really remember how do i found this out
+	float shadowDistance = shadowCenter[2] - hitCenter[2];
+
+	// Clamp so geometry above the root / unusual trace situations
+	// cannot produce an invalid attenuation value.
+	shadowDistance = fmax(0.0f, shadowDistance);
+
+	float shadowDistanceFactor = shadowDistance / traceDistance;
+	shadowDistanceFactor = fmin(1.0f, fmax(0.0f, shadowDistanceFactor));
+
+	const float fade = 1.0f -
+					   (shadowDistanceFactor * shadowDistanceFactor *
+						   (3.0f - 2.0f * shadowDistanceFactor));
+
+	const float shadowRadius = fmax(1.0f, baseRadius * (0.35f + 0.65f * fade));
+	const float shadowAlpha = baseAlpha * (0.20f + 0.80f * fade);
+
 	// Tiny lift only to prevent coplanar fighting. We do not use the normal to
 	// accept/reject surfaces; it is only used for this small depth separation.
 	Vector camPos = gHUD.pparams->vieworg;
@@ -1999,8 +2017,8 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 	for (int i = 0; i < NUM_SEGMENTS; ++i)
 	{
 		const float a = (float)i * (2.0f * (float)M_PI / (float)NUM_SEGMENTS);
-		const float x = shadowCenter[0] + cos(a) * radius;
-		const float y = shadowCenter[1] + sin(a) * radius;
+		const float x = shadowCenter[0] + cos(a) * shadowRadius;
+		const float y = shadowCenter[1] + sin(a) * shadowRadius;
 
 		Vector start(shadowCenter[0], shadowCenter[1], traceStartZ);
 		Vector end(x, y, traceEndZ);
@@ -2097,10 +2115,10 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 
 	glShadeModel(GL_SMOOTH);
 
-	const float edgeAlpha = alpha * 0.08f;
+	const float edgeAlpha = shadowAlpha * 0.08f;
 
 	// Center = strongest.
-	glColor4f(0.0f, 0.0f, 0.0f, alpha);
+	glColor4f(0.0f, 0.0f, 0.0f, shadowAlpha);
 	glBegin(GL_TRIANGLE_FAN);
 
 	glVertex3fv(hitCenter);
