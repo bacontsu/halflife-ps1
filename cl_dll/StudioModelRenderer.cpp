@@ -1067,7 +1067,7 @@ void CStudioModelRenderer::StudioSetupBones()
 		}
 	}
 
-	const float flBlendTime = (m_pCurrentEntity == gEngfuncs.GetViewModel()) ? 0.0f : 0.2f;
+	const float flBlendTime = (m_pCurrentEntity == gEngfuncs.GetViewModel()) ? 0.1f : 0.2f;
 
 	if ((m_fDoInterp != 0) &&
 		(m_pCurrentEntity->latched.sequencetime != 0.0f) &&
@@ -1925,7 +1925,6 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 	if (m_pCurrentEntity == nullptr || m_pCurrentEntity == gEngfuncs.GetViewModel())
 		return;
 
-	// Glow-shell entities call StudioRenderFinal twice. Only make one blob.
 	if (m_bChromeShell)
 		return;
 
@@ -1935,41 +1934,38 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 	if ((m_pCurrentEntity->curstate.effects & FL_NOMODEL) != 0)
 		return;
 
-	// Keep the existing explicit no-shadow convention.
 	if (m_pCurrentEntity->curstate.renderfx == 101)
 		return;
 
 	const float radius = fmax(1.0f, m_pCvarBlobShadowSize->value);
 	const float alpha = fmin(1.0f, fmax(0.0f, m_pCvarBlobShadowAlpha->value));
 	const float traceDistance = fmax(radius + 32.0f, m_pCvarBlobShadowDistance->value);
-	const float shadowOffset = 0.75f;
+	const float shadowOffset = 0.35f;
 
 	if (alpha <= 0.0f)
 		return;
 
-	// The entity origin is the most reliable horizontal anchor. The studio
-	// bbox mins/maxs are already in entity-local coordinates and were filled by
-	// StudioCheckBBox(), so use mins.z to place the trace near the feet.
-	const Vector origin = m_pCurrentEntity->origin;
+	// Keep the footprint centered on the actual world-space studio bounds.
+	// This is the same anchor used by the previous working version.
+	Vector shadowCenter;
+	shadowCenter[0] = (m_vMins[0] + m_vMaxs[0]) * 0.5f;
+	shadowCenter[1] = (m_vMins[1] + m_vMaxs[1]) * 0.5f;
 
-	// m_vMins/m_vMaxs are the actual world-space bounds produced by
-	// StudioCheckBBox(). They already include entity origin and model rotation.
-	// Use them for the trace height instead of origin + local mins.z.
-	// The latter can put the trace inside the floor when the model is grounded.
 	const float traceStartZ = m_vMaxs.z + 16.0f;
 	const float traceEndZ = m_vMins.z - traceDistance;
 
-	const int NUM_SEGMENTS = 16;
+	// A dense ring gives us a much cleaner single polygon than the old 16-point
+	// fan. There is deliberately NO normal filtering here: every successful
+	// downward trace contributes its actual hit position to the polygon.
+	const int NUM_SEGMENTS = 64;
 	Vector ring[NUM_SEGMENTS];
 	bool valid[NUM_SEGMENTS];
 
 	gEngfuncs.pEventAPI->EV_SetTraceHull(0);
 
-	// Trace the center separately so we have a surface normal and a guaranteed
-	// anchor for the fan. Use PM_WORLD_ONLY so the blob follows the actual BSP world surface.
-	// This also avoids the player/entity collision hull causing startsolid/failure.
-	Vector centerStart(origin.x, origin.y, traceStartZ);
-	Vector centerEnd(origin.x, origin.y, traceEndZ);
+	// Center trace.
+	Vector centerStart(shadowCenter[0], shadowCenter[1], traceStartZ);
+	Vector centerEnd(shadowCenter[0], shadowCenter[1], traceEndZ);
 	pmtrace_t centerTrace;
 
 	gEngfuncs.pEventAPI->EV_PlayerTrace(
@@ -1979,36 +1975,23 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 		-1,
 		&centerTrace);
 
-	if (centerTrace.allsolid != 0)
+	if (centerTrace.allsolid != 0 || centerTrace.startsolid != 0 || centerTrace.fraction >= 1.0f)
 		return;
 
-	Vector hitCenter;
-	bool centerValid = (centerTrace.fraction < 1.0f && centerTrace.startsolid == 0);
+	Vector hitCenter = centerStart + (centerEnd - centerStart) * centerTrace.fraction;
 
-	if (centerValid)
-	{
-		hitCenter = centerStart + (centerEnd - centerStart) * centerTrace.fraction;
-		//hitCenter += centerTrace.plane.normal * 0.35f;
-		for (int ja = 0; ja < 3; ja++)
-		{
-			hitCenter[ja] += centerTrace.plane.normal[ja] * shadowOffset;
-		}
-	}
-	else
-	{
-		// Fallback keeps the feature visible if the trace starts in a tiny
-		// collision overlap. This is also useful for odd custom entity bounds.
-		hitCenter[0] = origin[0];
-		hitCenter[1] = origin[1];
-		hitCenter[2] = m_vMins.z + 0.5f;
-	}
+	// Tiny lift only to prevent coplanar fighting. We do not use the normal to
+	// accept/reject surfaces; it is only used for this small depth separation.
+	for (int j = 0; j < 3; ++j)
+		hitCenter[j] += centerTrace.plane.normal[j] * shadowOffset;
 
+	int validCount = 0;
 
 	for (int i = 0; i < NUM_SEGMENTS; ++i)
 	{
 		const float a = (float)i * (2.0f * (float)M_PI / (float)NUM_SEGMENTS);
-		const float x = origin.x + cos(a) * radius;
-		const float y = origin.y + sin(a) * radius;
+		const float x = shadowCenter[0] + cos(a) * radius;
+		const float y = shadowCenter[1] + sin(a) * radius;
 
 		Vector start(x, y, traceStartZ);
 		Vector end(x, y, traceEndZ);
@@ -2026,18 +2009,51 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 		if (tr.allsolid != 0 || tr.startsolid != 0 || tr.fraction >= 1.0f)
 			continue;
 
+		// The polygon vertex IS the trace hit position. No surface normal
+		// filtering, no Z-difference test, and no hand-built bridge geometry.
 		ring[i] = start + (end - start) * tr.fraction;
-		for (int ja = 0; ja < 3; ja++)
-		{
-			ring[i][ja] += tr.plane.normal[ja] * shadowOffset;
-		}
+		for (int j = 0; j < 3; ++j)
+			ring[i][j] += tr.plane.normal[j] * shadowOffset;
+
 		valid[i] = true;
+		++validCount;
 	}
 
-	// IMPORTANT: StudioRenderFinal can be reached while another renderer has
-	// left arbitrary fixed-function state behind. At this point the previous
-	// studio pass has already unbound GLSL, but explicitly unbind again so our
-	// glBegin/glColor calls are guaranteed to use the fixed-function path.
+	// We need a reasonably complete circumference to make one polygon. If a
+	// few rays miss at map edges, fill those missing vertices from the nearest
+	// successful sample rather than making the entire shadow disappear.
+	if (validCount < 8)
+		return;
+
+	for (int i = 0; i < NUM_SEGMENTS; ++i)
+	{
+		if (valid[i])
+			continue;
+
+		int best = -1;
+		for (int d = 1; d < NUM_SEGMENTS; ++d)
+		{
+			const int left = (i - d + NUM_SEGMENTS) % NUM_SEGMENTS;
+			const int right = (i + d) % NUM_SEGMENTS;
+
+			if (valid[left])
+			{
+				best = left;
+				break;
+			}
+			if (valid[right])
+			{
+				best = right;
+				break;
+			}
+		}
+
+		if (best >= 0)
+			ring[i] = ring[best];
+		else
+			ring[i] = hitCenter;
+	}
+
 	CGLSLShader::Unbind();
 
 	glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT |
@@ -2054,45 +2070,27 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 	glDepthFunc(GL_LEQUAL);
 	glDepthMask(GL_FALSE);
 
-	// The shadow is intentionally very close to the world surface. Use polygon
-	// offset as a second layer of protection against depth-buffer coplanar fighting.
+	// Keep the shadow just above the receiver. The actual geometry comes from
+	// the trace hits, so this is only a z-fighting safeguard.
 	glEnable(GL_POLYGON_OFFSET_FILL);
 	glPolygonOffset(-1.0f, -1.0f);
 
-	// Prevent the fog from making the small blob effectively invisible.
 	const GLboolean fogWasEnabled = glIsEnabled(GL_FOG);
 	if (fogWasEnabled)
 		glDisable(GL_FOG);
 
-	glShadeModel(GL_SMOOTH);
+	// Flat, single-colour blob. No gradient and no per-vertex alpha.
+	glColor4f(0.0f, 0.0f, 0.0f, alpha);
 
-	// Draw individual triangles instead of one giant fan. On stairs, a few
-	// rays can hit different treads; invalid sectors are simply omitted.
-	glBegin(GL_TRIANGLES);
-	for (int i = 0; i < NUM_SEGMENTS; ++i)
+	// High-poly triangle fan. Every outer vertex is an actual downward-trace
+	// hit, so the blob follows the geometry instead of approximating it with
+	// arbitrary projected/offset coordinates.
+	glBegin(GL_TRIANGLE_FAN);
+	glVertex3fv(hitCenter - Vector(0, 0, 36));
+	for (int i = 0; i <= NUM_SEGMENTS; ++i)
 	{
-		const int j = i;
-		const int k = (i + 1) % NUM_SEGMENTS;
-
-		if (!valid[j] || !valid[k])
-			continue;
-
-		// Do not bridge a large vertical stair riser with one triangle.
-		const float minZ = fmin(ring[j].z, ring[k].z);
-		const float maxZ = fmax(ring[j].z, ring[k].z);
-		if ((maxZ - minZ) > 20.0f)
-			continue;
-
-		// Center is opaque-ish, edge is transparent. Fixed-function smooth
-		// shading gives us a cheap radial soft edge without a texture/shader.
-		glColor4f(0.0f, 0.0f, 0.0f, centerValid ? alpha : alpha * 0.75f);
-		glVertex3fv(hitCenter - Vector(0, 0, 36));
-
-		glColor4f(0.0f, 0.0f, 0.0f, alpha * 0.08f);
-		glVertex3fv(ring[j] - Vector(0, 0, 36));
-
-		glColor4f(0.0f, 0.0f, 0.0f, alpha * 0.08f);
-		glVertex3fv(ring[k] - Vector(0, 0, 36));
+		const int index = i % NUM_SEGMENTS;
+		glVertex3fv(ring[index] - Vector(0,0,36));
 	}
 	glEnd();
 
