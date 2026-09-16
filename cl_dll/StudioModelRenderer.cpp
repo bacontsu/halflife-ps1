@@ -1944,14 +1944,17 @@ void CStudioModelRenderer::StudioDrawBlobShadow()
 	if (alpha <= 0.0f)
 		return;
 
-	// Keep the footprint centered on the actual world-space studio bounds.
-	// This is the same anchor used by the previous working version.
-	Vector shadowCenter;
-	shadowCenter[0] = (m_vMins[0] + m_vMaxs[0]) * 0.5f;
-	shadowCenter[1] = (m_vMins[1] + m_vMaxs[1]) * 0.5f;
+	if (m_pbonetransform == nullptr || m_pStudioHeader->numbones <= 0)
+		return;
 
-	const float traceStartZ = m_vMaxs.z + 16.0f;
-	const float traceEndZ = m_vMins.z - traceDistance;
+	Vector shadowCenter;
+
+	shadowCenter[0] = (*m_pbonetransform)[0][0][3];
+	shadowCenter[1] = (*m_pbonetransform)[0][1][3];
+	shadowCenter[2] = (*m_pbonetransform)[0][2][3];
+
+	const float traceStartZ = shadowCenter[2] + 16.0f;
+	const float traceEndZ = shadowCenter[2] - traceDistance;
 
 	// A dense ring gives us a much cleaner single polygon than the old 16-point
 	// fan. There is deliberately NO normal filtering here: every successful
