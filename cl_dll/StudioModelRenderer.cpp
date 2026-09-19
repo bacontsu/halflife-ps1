@@ -1067,7 +1067,7 @@ void CStudioModelRenderer::StudioSetupBones()
 		}
 	}
 
-	const float flBlendTime = (m_pCurrentEntity == gEngfuncs.GetViewModel()) ? 0.1f : 0.2f;
+	const float flBlendTime = (m_pCurrentEntity == gEngfuncs.GetViewModel()) ? 0.0f : 0.2f;
 
 	if ((m_fDoInterp != 0) &&
 		(m_pCurrentEntity->latched.sequencetime != 0.0f) &&
