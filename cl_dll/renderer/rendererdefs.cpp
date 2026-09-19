@@ -904,7 +904,7 @@ void R_CalcRefDef(ref_params_t* pparams)
 	gBSPRenderer.DrawShadowPasses();
 
 	// Render water shader perspectives
-	gWaterShader.DrawWaterPasses(pparams);
+	//gWaterShader.DrawWaterPasses(pparams);
 
 	// Render mirror perspectives
 	gMirrorManager.DrawMirrorPasses(pparams);

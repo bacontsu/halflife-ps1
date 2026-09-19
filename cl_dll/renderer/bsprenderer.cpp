@@ -599,7 +599,7 @@ void CBSPRenderer::GetRenderEnts()
 			continue;
 		}
 
-		if (((pEntity->curstate.effects & FL_WATERSHADER) != 0) && m_bShaderSupport && gWaterShader.m_pCvarWaterShader->value > 0)
+		if (((pEntity->curstate.effects & FL_WATERSHADER) != 0) && m_bShaderSupport && gWaterShader.m_pCvarWaterRipple->value > 0)
 		{
 			if (pEntity->efrag == nullptr)
 				gWaterShader.AddEntity(pEntity);
@@ -2089,6 +2089,7 @@ HasDynLights
 */
 bool CBSPRenderer::HasDynLights()
 {
+	return true;
 	float time = gEngfuncs.GetClientTime();
 	cl_dlight_t* dl = m_pDynLights;
 
@@ -3381,31 +3382,27 @@ void CBSPRenderer::EmitWaterPolys(msurface_t* fa)
 		}
 	}
 
-
 	SetTexEnvs(ENVSTATE_MUL);
 	glActiveTextureARB(GL_TEXTURE0_ARB);
-	Bind2DTexture(GL_TEXTURE0_ARB, fa->texinfo->texture->gl_texturenum);
 
-	float fltime = gEngfuncs.GetClientTime();
-	for (glpoly_t* p = fa->polys; p != nullptr; p = p->next)
+	// --- RIPPLE INTEGRATION START ---
+	// Generate/update the ripples and check if the effect is active
+	bool hasRipples = gWaterShader.UploadRipples(fa->texinfo->texture);
+
+	if (!hasRipples)
 	{
-		glBegin(GL_POLYGON);
-		for (int i = 0; i < p->numverts; i++)
-		{
-			float os = p->verts[i][3];
-			float ot = p->verts[i][4];
-
-			float s = os + turbsin[(int)((ot * 0.125 + fltime) * 40) & 255];
-			float t = ot + turbsin[(int)((os * 0.125 + fltime) * 40) & 255];
-			float ssin = turbsin[(int)((os * 0.125 + (fltime * 3.2)) * 40) & 255];
-			float tsin = turbsin[(int)((ot * 0.125 + (fltime * 3.2)) * 40) & 255];
-			float height = (ssin - tsin) * m_pCurrentEntity->curstate.scale;
-
-			glMultiTexCoord2fARB(GL_TEXTURE0_ARB, s * (1.0 / 64), t * (1.0 / 64));
-			glVertex3f(p->verts[i][0], p->verts[i][1], p->verts[i][2] + height);
-		}
-		glEnd();
+		// Fallback to the original static WAD texture
+		Bind2DTexture(GL_TEXTURE0_ARB, fa->texinfo->texture->gl_texturenum);
 	}
+	else
+	{
+		// Sync CBSPRenderer's state tracker with the dynamically generated ripple texture
+		Bind2DTexture(GL_TEXTURE0_ARB, gWaterShader.m_RippleTextures[fa->texinfo->texture->gl_texturenum]);
+	}
+
+	// Delegate the actual vertex rendering to the unified water shader
+	gWaterShader.EmitWaterPolys(fa, false, hasRipples, m_pCurrentEntity);
+	// --- RIPPLE INTEGRATION END ---
 
 	if (m_pCvarWireFrame->value >= 1)
 	{

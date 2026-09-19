@@ -1,14 +1,5 @@
 /*
-Trinity Rendering Engine - Copyright Andrew Lucas 2009-2012
-
-The Trinity Engine is free software, distributed in the hope th-
-at it will be useful, but WITHOUT ANY WARRANTY; without even the
-implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-PURPOSE. See the GNU Lesser General Public License for more det-
-ails.
-
-Water Shader
-Written by Andrew Lucas
+Trinity Rendering Engine - Classic Water Ripples
 */
 
 #if !defined(WATERSHADER_H)
@@ -27,25 +18,15 @@ Written by Andrew Lucas
 #include "cvardef.h"
 #include "textureloader.h"
 #include "rendererdefs.h"
-#include "glslshader.h"
+#include <map>
+#include <cstdint>
 
-// Uniforms of the water shaders
-struct glsl_water_uniforms_t
-{
-	GLint radialfog;
-	GLint fogenabled;
-	GLint vieworigin; // Above water only
-	GLint watercolor;
-	GLint fresnel; // Above water only
-	GLint time;
-};
+#define RIPPLES_CACHEWIDTH_BITS 7
+#define RIPPLES_CACHEWIDTH (1 << RIPPLES_CACHEWIDTH_BITS)
+#define RIPPLES_CACHEWIDTH_MASK ((RIPPLES_CACHEWIDTH) - 1)
+#define RIPPLES_TEXSIZE (RIPPLES_CACHEWIDTH * RIPPLES_CACHEWIDTH)
+#define RIPPLES_TEXSIZE_MASK (RIPPLES_TEXSIZE - 1)
 
-/*
-====================
-CWaterShader
-
-====================
-*/
 class CWaterShader
 {
 public:
@@ -57,23 +38,16 @@ public:
 
 	void AddEntity(cl_entity_t* entity);
 	void DrawWater();
-
-	void DrawWaterPasses(ref_params_t* pparams);
-	void DrawScene(ref_params_t* pparams, bool forcemodels);
-
-	void SetupRefract();
-	void FinishRefract();
-
-	void SetupReflect();
-	void FinishReflect();
-
-	void SetupClipping(ref_params_t* pparams, bool isrefracting);
 	void LoadScript();
 
-	bool ViewInWater();
-	bool ShouldReflect(int index);
-
-	Vector GetWaterOrigin(cl_water_t* pwater = nullptr);
+	// Classic Ripple Methods
+	void AnimateRipples();
+	void SpawnNewRipple(int x, int y, short val);
+	void RunRipplesAnimation(const short* oldbuf, short* pbuf);
+	void GetRippleTextureSize(const texture_t* image, int* width, int* height);
+	uint32_t* GetPixelBuffer(texture_t* image);
+	bool UploadRipples(texture_t* image);
+	void EmitWaterPolys(msurface_t* warp, bool reverse, bool ripples, cl_entity_t* ent);
 
 public:
 	bool m_bViewInWater;
@@ -81,36 +55,28 @@ public:
 
 	cl_water_t m_pWaterEntities[MAX_WATER_ENTITIES];
 	int m_iNumWaterEntities;
-
-	cvar_t* m_pCvarWaterShader;
-	cvar_t* m_pCvarWaterDebug;
-
-	cl_texture_t* m_pNormalTexture;
 	cl_water_t* m_pCurWater;
 
-	ref_params_t* m_pViewParams;
-	ref_params_t m_pWaterParams;
+	cvar_t* m_pCvarWaterRipple;
+	cvar_t* m_pCvarWaterRippleUpdate;
+	cvar_t* m_pCvarWaterRippleSpawn;
 
-	Vector m_vWaterOrigin;
-	Vector m_vWaterPlaneMins;
-	Vector m_vWaterPlaneMaxs;
-	Vector m_vWaterEntMins;
-	Vector m_vWaterEntMaxs;
+	// Ripple states and buffers
+	short buf[2][RIPPLES_TEXSIZE];
+	short *curbuf, *oldbuf;
+	double m_time;
+	double m_oldtime;
+	bool m_update;
+	uint32_t texture[RIPPLES_TEXSIZE];
 
-	int m_iNumPasses;
-
-public:
-	CGLSLShader m_waterShaderAbove;
-	CGLSLShader m_waterShaderUnder;
-
-	glsl_water_uniforms_t m_waterUniformsAbove;
-	glsl_water_uniforms_t m_waterUniformsUnder;
+	// Safely stores original textures and updated ripple textures without altering engine structs
+	std::map<GLuint, uint32_t*> m_PixBuffers;
+	std::map<GLuint, GLuint> m_RippleTextures;
+	std::map<GLuint, unsigned long> m_RippleUpdates;
 
 public:
 	fog_settings_t m_pMainFogSettings;
 	fog_settings_t m_pWaterFogSettings;
-
-	float m_flFresnelTerm;
 };
 
 extern CWaterShader gWaterShader;
